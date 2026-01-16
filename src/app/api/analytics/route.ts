@@ -172,8 +172,8 @@ export async function GET(request: Request) {
   return NextResponse.json({
     overview: {
       total,
-      completed,
-      active,
+      completed: statusCounts.done,
+      active: statusCounts.active,
       avgCompletionTime,
     },
     statusDistribution,

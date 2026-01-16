@@ -25,6 +25,10 @@ export async function GET(request: NextRequest) {
   const dateFrom = searchParams.get('date_from');
   const dateTo = searchParams.get('date_to');
 
+  // Pagination parameters with sensible defaults to prevent fetching entire dataset
+  const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 500); // Max 500
+  const offset = parseInt(searchParams.get('offset') || '0');
+
   let query = supabase
     .from('requests')
     .select(`
@@ -32,7 +36,8 @@ export async function GET(request: NextRequest) {
       company:companies(id, name, status, plan_tier),
       assignee:profiles!requests_assigned_to_fkey(id, email, full_name, avatar_url)
     `)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   // Apply search query (search in title and description)
   if (searchQuery) {

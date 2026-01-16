@@ -1,0 +1,15 @@
+{
+  "phase": "BOOTSTRAP",
+  "status": "INITIALIZING",
+  "startedAt": "2026-01-13T00:00:00Z",
+  "lastUpdated": "2026-01-13T00:00:00Z",
+  "metrics": {
+    "tasksCompleted": 0,
+    "tasksFailed": 0,
+    "agentsSpawned": 0,
+    "tokensUsed": 0
+  },
+  "checkpoints": [],
+  "prdPath": null,
+  "projectType": "B2B-CRM"
+}

@@ -1,0 +1,683 @@
+openapi: 3.1.0
+info:
+  title: AgencyOS API
+  description: Client Portal & Agency Fulfillment System API
+  version: 1.0.0
+  contact:
+    name: AgencyOS
+servers:
+  - url: http://localhost:3000/api
+    description: Development server
+  - url: https://agencyos.example.com/api
+    description: Production server
+
+tags:
+  - name: Webhooks
+    description: External service webhooks
+  - name: Requests
+    description: Client request management
+  - name: Companies
+    description: Company/client management
+  - name: Comments
+    description: Async communication on requests
+  - name: Auth
+    description: Authentication endpoints
+
+paths:
+  /webhooks/woo:
+    post:
+      tags: [Webhooks]
+      summary: WooCommerce subscription webhook
+      description: |
+        Handles subscription events from WooCommerce:
+        - subscription.created: Creates new company and user
+        - subscription.updated: Updates company status/plan
+        - subscription.cancelled: Marks company as churned
+      operationId: handleWooWebhook
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WooWebhookPayload'
+      responses:
+        '200':
+          description: Webhook processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid webhook signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /requests:
+    get:
+      tags: [Requests]
+      summary: List requests for a company
+      description: Returns all requests for the authenticated user's company (or all if admin)
+      operationId: listRequests
+      parameters:
+        - name: company_id
+          in: query
+          description: Filter by company (admin only)
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [queue, active, review, done]
+      responses:
+        '200':
+          description: List of requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Request'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Requests]
+      summary: Create a new request
+      description: Creates a new request in "queue" status
+      operationId: createRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequestInput'
+      responses:
+        '201':
+          description: Request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Request'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Company is paused or churned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /requests/{id}:
+    get:
+      tags: [Requests]
+      summary: Get a specific request
+      operationId: getRequest
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Request details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Request'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Requests]
+      summary: Update a request
+      description: Update request details (title, description, priority, assets)
+      operationId: updateRequest
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRequestInput'
+      responses:
+        '200':
+          description: Request updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Request'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Cannot update request in current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Requests]
+      summary: Delete a request
+      description: Only requests in "queue" status can be deleted by clients
+      operationId: deleteRequest
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '204':
+          description: Request deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Cannot delete request not in queue status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /requests/{id}/move:
+    post:
+      tags: [Requests]
+      summary: Move request to a new status
+      description: |
+        Move a request between statuses. Constraints:
+        - Only admins can move to "active"
+        - Moving to "active" checks company's max_active_limit
+        - Clients can move from "review" to "done"
+      operationId: moveRequest
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [queue, active, review, done]
+      responses:
+        '200':
+          description: Request moved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Request'
+        '400':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not authorized or limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /requests/{id}/comments:
+    get:
+      tags: [Comments]
+      summary: List comments on a request
+      description: Returns comments (internal comments only visible to admins)
+      operationId: listComments
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Comment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Comments]
+      summary: Add a comment to a request
+      operationId: createComment
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentInput'
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Company is paused or churned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /companies:
+    get:
+      tags: [Companies]
+      summary: List all companies (Admin only)
+      operationId: listCompanies
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, paused, churned]
+      responses:
+        '200':
+          description: List of companies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Company'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /companies/{id}:
+    get:
+      tags: [Companies]
+      summary: Get company details
+      operationId: getCompany
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Company details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /companies/{id}/pause:
+    post:
+      tags: [Companies]
+      summary: Pause subscription
+      description: Triggers WooCommerce API to suspend subscription at billing period end
+      operationId: pauseSubscription
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Pause initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  pauseDate:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not authorized to pause this company
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/set-password:
+    post:
+      tags: [Auth]
+      summary: Set password for new user
+      description: Used after WooCommerce provisioning to set initial password
+      operationId: setPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                  description: Password reset token from email
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Password set successfully
+        '400':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/magic-link:
+    post:
+      tags: [Auth]
+      summary: Send magic link for passwordless login
+      operationId: sendMagicLink
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Magic link sent (always returns success for security)
+        '429':
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase JWT token
+
+  parameters:
+    RequestId:
+      name: id
+      in: path
+      required: true
+      description: Request UUID
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
+
+    WebhookResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        action:
+          type: string
+          enum: [created, updated, ignored]
+        companyId:
+          type: string
+          format: uuid
+
+    WooWebhookPayload:
+      type: object
+      required: [id, status, customer_id]
+      properties:
+        id:
+          type: integer
+          description: WooCommerce subscription ID
+        status:
+          type: string
+          enum: [active, on-hold, cancelled, pending, expired]
+        customer_id:
+          type: integer
+        billing:
+          type: object
+          properties:
+            email:
+              type: string
+              format: email
+            first_name:
+              type: string
+            last_name:
+              type: string
+            company:
+              type: string
+        line_items:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: integer
+              name:
+                type: string
+
+    Company:
+      type: object
+      required: [id, name, status, plan_tier, max_active_limit]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, paused, churned]
+        plan_tier:
+          type: string
+          enum: [standard, pro]
+        max_active_limit:
+          type: integer
+          minimum: 1
+        woo_customer_id:
+          type: string
+        stripe_customer_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        active_request_count:
+          type: integer
+          description: Current count of active requests
+
+    Request:
+      type: object
+      required: [id, company_id, title, status, priority, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          description: Markdown supported
+        status:
+          type: string
+          enum: [queue, active, review, done]
+        priority:
+          type: string
+          enum: [low, normal, high]
+        assets_link:
+          type: string
+          format: uri
+          description: Google Drive / Dropbox URL
+        video_brief:
+          type: string
+          format: uri
+          description: Loom URL
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        company:
+          $ref: '#/components/schemas/Company'
+
+    CreateRequestInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [low, normal, high]
+          default: normal
+        assets_link:
+          type: string
+          format: uri
+        video_brief:
+          type: string
+          format: uri
+
+    UpdateRequestInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [low, normal, high]
+        assets_link:
+          type: string
+          format: uri
+        video_brief:
+          type: string
+          format: uri
+
+    Comment:
+      type: object
+      required: [id, request_id, user_id, content, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        request_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        is_internal:
+          type: boolean
+          default: false
+          description: Only visible to admins
+        created_at:
+          type: string
+          format: date-time
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+            full_name:
+              type: string
+
+    CreateCommentInput:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+        is_internal:
+          type: boolean
+          default: false
+
+security:
+  - bearerAuth: []

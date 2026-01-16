@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -22,15 +22,29 @@ export function SearchBar({
   debounceMs = 300,
 }: SearchBarProps) {
   const [localValue, setLocalValue] = useState(value);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timeout on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   const debouncedOnChange = useCallback(
-    (() => {
-      let timeoutId: NodeJS.Timeout;
-      return (newValue: string) => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => onChange(newValue), debounceMs);
-      };
-    })(),
+    (newValue: string) => {
+      // Clear any existing timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      // Set new timeout
+      timeoutRef.current = setTimeout(() => {
+        onChange(newValue);
+        timeoutRef.current = null;
+      }, debounceMs);
+    },
     [onChange, debounceMs]
   );
 

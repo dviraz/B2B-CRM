@@ -45,21 +45,29 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Get active request counts for each company
-  const companiesWithCounts = await Promise.all(
-    (companies || []).map(async (company) => {
-      const { count } = await supabase
-        .from('requests')
-        .select('*', { count: 'exact', head: true })
-        .eq('company_id', company.id)
-        .eq('status', 'active') as { count: number | null };
+  // Get all active request counts in a single query (instead of N+1 queries)
+  const companyIds = (companies || []).map((c) => c.id);
 
-      return {
-        ...company,
-        active_request_count: count || 0,
-      };
-    })
-  );
+  // Build a count map with a single query
+  const activeCountMap = new Map<string, number>();
+
+  if (companyIds.length > 0) {
+    const { data: activeRequests } = await supabase
+      .from('requests')
+      .select('company_id')
+      .in('company_id', companyIds)
+      .eq('status', 'active') as { data: Array<{ company_id: string }> | null };
+
+    // Count requests per company in memory (single pass)
+    (activeRequests || []).forEach((req) => {
+      activeCountMap.set(req.company_id, (activeCountMap.get(req.company_id) || 0) + 1);
+    });
+  }
+
+  const companiesWithCounts = (companies || []).map((company) => ({
+    ...company,
+    active_request_count: activeCountMap.get(company.id) || 0,
+  }));
 
   return NextResponse.json(companiesWithCounts);
 }

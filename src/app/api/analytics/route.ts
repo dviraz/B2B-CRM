@@ -57,79 +57,115 @@ export async function GET(request: Request) {
     });
   }
 
-  // Overview metrics
-  const total = requests.length;
-  const completed = requests.filter((r) => r.status === 'done').length;
-  const active = requests.filter((r) => r.status === 'active').length;
+  // Get team members first (needed for workload calculation)
+  const { data: teamMembers } = await supabase
+    .from('profiles')
+    .select('id, full_name, email')
+    .eq('role', 'admin') as { data: Array<{ id: string; full_name: string | null; email: string }> | null };
 
-  // Average completion time (in hours)
-  const completedRequests = requests.filter((r) => r.completed_at);
-  let avgCompletionTime = 0;
-  if (completedRequests.length > 0) {
-    const totalTime = completedRequests.reduce((sum, r) => {
-      const created = new Date(r.created_at);
-      const completed = new Date(r.completed_at!);
-      return sum + (completed.getTime() - created.getTime());
-    }, 0);
-    avgCompletionTime = Math.round(totalTime / completedRequests.length / (1000 * 60 * 60)); // hours
-  }
+  // SINGLE-PASS ALGORITHM: Calculate all metrics in one loop through requests
+  // Instead of ~15 separate filter operations, we do everything in one pass
+  const statusCounts = { queue: 0, active: 0, review: 0, done: 0 };
+  const priorityCounts = { low: 0, normal: 0, high: 0 };
+  const slaCounts = { on_track: 0, at_risk: 0, breached: 0, total: 0 };
 
-  // Status distribution
-  const statusDistribution = ['queue', 'active', 'review', 'done'].map((status) => ({
-    name: status,
-    value: requests.filter((r) => r.status === status).length,
-  }));
-
-  // Priority distribution
-  const priorityDistribution = ['low', 'normal', 'high'].map((priority) => ({
-    name: priority,
-    value: requests.filter((r) => r.priority === priority).length,
-  }));
-
-  // Request volume over time (daily)
+  // Initialize volume map for daily counts
   const volumeMap = new Map<string, number>();
   for (let i = days - 1; i >= 0; i--) {
     const date = new Date();
     date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().split('T')[0];
-    volumeMap.set(dateStr, 0);
+    volumeMap.set(date.toISOString().split('T')[0], 0);
   }
 
-  requests.forEach((r) => {
+  // Initialize team workload tracking
+  const teamWorkloadMap = new Map<string, { total: number; active: number; completed: number }>();
+  (teamMembers || []).forEach((m) => {
+    teamWorkloadMap.set(m.id, { total: 0, active: 0, completed: 0 });
+  });
+
+  // Completion time tracking
+  let completedCount = 0;
+  let totalCompletionTime = 0;
+
+  // SINGLE PASS through all requests
+  for (const r of requests) {
+    // Status counts
+    if (r.status in statusCounts) {
+      statusCounts[r.status as keyof typeof statusCounts]++;
+    }
+
+    // Priority counts
+    if (r.priority in priorityCounts) {
+      priorityCounts[r.priority as keyof typeof priorityCounts]++;
+    }
+
+    // SLA counts
+    if (r.sla_status) {
+      slaCounts.total++;
+      if (r.sla_status in slaCounts) {
+        slaCounts[r.sla_status as keyof typeof slaCounts]++;
+      }
+    }
+
+    // Volume by date
     const dateStr = r.created_at.split('T')[0];
     if (volumeMap.has(dateStr)) {
       volumeMap.set(dateStr, (volumeMap.get(dateStr) || 0) + 1);
     }
-  });
+
+    // Completion time calculation
+    if (r.completed_at) {
+      completedCount++;
+      const created = new Date(r.created_at);
+      const completed = new Date(r.completed_at);
+      totalCompletionTime += completed.getTime() - created.getTime();
+    }
+
+    // Team workload
+    if (r.assigned_to && teamWorkloadMap.has(r.assigned_to)) {
+      const workload = teamWorkloadMap.get(r.assigned_to)!;
+      workload.total++;
+      if (r.status === 'active') workload.active++;
+      if (r.status === 'done') workload.completed++;
+    }
+  }
+
+  // Build final response objects from the single-pass results
+  const total = requests.length;
+  const avgCompletionTime = completedCount > 0
+    ? Math.round(totalCompletionTime / completedCount / (1000 * 60 * 60))
+    : 0;
+
+  const statusDistribution = ['queue', 'active', 'review', 'done'].map((status) => ({
+    name: status,
+    value: statusCounts[status as keyof typeof statusCounts],
+  }));
+
+  const priorityDistribution = ['low', 'normal', 'high'].map((priority) => ({
+    name: priority,
+    value: priorityCounts[priority as keyof typeof priorityCounts],
+  }));
 
   const requestVolume = Array.from(volumeMap.entries()).map(([date, count]) => ({
     date,
     count,
   }));
 
-  // SLA compliance
-  const requestsWithSla = requests.filter((r) => r.sla_status);
   const slaCompliance = {
-    onTrack: requestsWithSla.filter((r) => r.sla_status === 'on_track').length,
-    atRisk: requestsWithSla.filter((r) => r.sla_status === 'at_risk').length,
-    breached: requestsWithSla.filter((r) => r.sla_status === 'breached').length,
-    total: requestsWithSla.length,
+    onTrack: slaCounts.on_track,
+    atRisk: slaCounts.at_risk,
+    breached: slaCounts.breached,
+    total: slaCounts.total,
   };
 
-  // Team workload
-  const { data: teamMembers } = await supabase
-    .from('profiles')
-    .select('id, full_name, email')
-    .eq('role', 'admin') as { data: Array<{ id: string; full_name: string | null; email: string }> | null };
-
   const teamWorkload = (teamMembers || []).map((member) => {
-    const assigned = requests.filter((r) => r.assigned_to === member.id);
+    const workload = teamWorkloadMap.get(member.id) || { total: 0, active: 0, completed: 0 };
     return {
       id: member.id,
       name: member.full_name || member.email,
-      total: assigned.length,
-      active: assigned.filter((r) => r.status === 'active').length,
-      completed: assigned.filter((r) => r.status === 'done').length,
+      total: workload.total,
+      active: workload.active,
+      completed: workload.completed,
     };
   });
 

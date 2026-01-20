@@ -306,3 +306,173 @@
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
 }
+
+/* ============================================
+   MOBILE RESPONSIVENESS
+   ============================================ */
+
+/* Mobile-first responsive utilities */
+@layer utilities {
+  /* Hide scrollbar but allow scrolling */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Safe area padding for iOS */
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Touch-friendly tap targets */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Prevent text selection on mobile */
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Smooth momentum scrolling on iOS */
+  .scroll-smooth-ios {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Mobile Kanban Board */
+@media (max-width: 768px) {
+  /* Stack kanban columns vertically on mobile */
+  .kanban-board-mobile {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .kanban-board-mobile > * {
+    min-width: 100%;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  /* Mobile card adjustments */
+  .kanban-card-mobile {
+    padding: 0.75rem;
+  }
+
+  /* Mobile table adjustments */
+  .table-mobile {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Mobile dialog adjustments */
+  [data-radix-dialog-content] {
+    max-height: 90vh;
+    max-width: 95vw;
+    margin: 1rem;
+  }
+
+  /* Mobile form adjustments */
+  .form-mobile input,
+  .form-mobile textarea,
+  .form-mobile select {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .kanban-board-tablet {
+    flex-wrap: wrap;
+  }
+
+  .kanban-board-tablet > * {
+    min-width: calc(50% - 0.5rem);
+    flex: 1 1 calc(50% - 0.5rem);
+  }
+}
+
+/* ============================================
+   MENTION STYLES
+   ============================================ */
+
+.mention {
+  background-color: oklch(0.94 0.04 264);
+  color: oklch(0.45 0.18 264);
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dark .mention {
+  background-color: oklch(0.28 0.06 264);
+  color: oklch(0.8 0.15 264);
+}
+
+/* ============================================
+   PROSE/RICH TEXT STYLES
+   ============================================ */
+
+.prose {
+  max-width: none;
+}
+
+.prose p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose ul,
+.prose ol {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.5rem;
+}
+
+.prose li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.prose code {
+  background-color: oklch(0.95 0.01 250);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.dark .prose code {
+  background-color: oklch(0.24 0.015 260);
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+    color: black;
+  }
+
+  .shadow-card,
+  .shadow-card-hover {
+    box-shadow: none;
+  }
+}

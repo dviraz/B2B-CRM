@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { LogOut, User, Building2, LayoutDashboard, Users, Settings, BarChart3, FileText, Zap, Shield } from 'lucide-react';
+import { LogOut, User, Building2, LayoutDashboard, Users, Settings, BarChart3, FileText, Zap, Shield, Menu, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,6 +16,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { NotificationCenter } from '@/components/notification-center';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 import type { Company, UserRole } from '@/types';
 
@@ -30,6 +31,7 @@ interface DashboardNavProps {
 
 export function DashboardNav({ user, company }: DashboardNavProps) {
   const [mounted, setMounted] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const isAdmin = user.role === 'admin';
@@ -38,6 +40,11 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   const handleSignOut = async () => {
     const supabase = createClient();
@@ -156,7 +163,22 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
             </div>
           )}
 
+          <ThemeToggle />
           <NotificationCenter />
+
+          {/* Mobile menu button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? (
+              <X className="h-5 w-5" />
+            ) : (
+              <Menu className="h-5 w-5" />
+            )}
+          </Button>
 
           {mounted ? (
             <DropdownMenu>
@@ -213,6 +235,111 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
           )}
         </div>
       </div>
+
+      {/* Mobile Navigation Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-b bg-card">
+          <nav className="container mx-auto px-4 py-4 flex flex-col gap-2">
+            <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  'w-full justify-start',
+                  pathname === '/dashboard' && 'bg-muted'
+                )}
+              >
+                <LayoutDashboard className="h-4 w-4 mr-2" />
+                Dashboard
+              </Button>
+            </Link>
+
+            {isAdmin && (
+              <>
+                <Link href="/dashboard/admin" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'w-full justify-start',
+                      pathname === '/dashboard/admin' && 'bg-muted'
+                    )}
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    All Clients
+                  </Button>
+                </Link>
+                <Link href="/dashboard/admin/analytics" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'w-full justify-start',
+                      pathname === '/dashboard/admin/analytics' && 'bg-muted'
+                    )}
+                  >
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Analytics
+                  </Button>
+                </Link>
+                <Link href="/dashboard/admin/templates" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'w-full justify-start',
+                      pathname === '/dashboard/admin/templates' && 'bg-muted'
+                    )}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Templates
+                  </Button>
+                </Link>
+                <Link href="/dashboard/admin/workflows" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'w-full justify-start',
+                      pathname === '/dashboard/admin/workflows' && 'bg-muted'
+                    )}
+                  >
+                    <Zap className="h-4 w-4 mr-2" />
+                    Workflows
+                  </Button>
+                </Link>
+                <Link href="/dashboard/admin/audit" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'w-full justify-start',
+                      pathname === '/dashboard/admin/audit' && 'bg-muted'
+                    )}
+                  >
+                    <Shield className="h-4 w-4 mr-2" />
+                    Audit
+                  </Button>
+                </Link>
+              </>
+            )}
+
+            <Link href="/dashboard/settings" onClick={() => setMobileMenuOpen(false)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  'w-full justify-start',
+                  pathname === '/dashboard/settings' && 'bg-muted'
+                )}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </Button>
+            </Link>
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

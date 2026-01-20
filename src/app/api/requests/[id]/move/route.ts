@@ -1,136 +1,191 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import type { RequestStatus } from '@/types';
+import { rateLimit } from '@/lib/rate-limit';
+import { Errors, handleError, successResponse, logger } from '@/lib/errors';
+import { object, oneOf } from '@/lib/validation';
+import { createWorkflowEngine } from '@/lib/workflows/engine';
+import type { RequestStatus, Request } from '@/types';
 
 type Params = Promise<{ id: string }>;
 
 // Define valid status transitions
 const VALID_TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
-  queue: ['active', 'done'], // Admin can move to active, anyone can cancel to done
-  active: ['review', 'queue'], // Admin moves to review, can return to queue
-  review: ['done', 'active'], // Can be approved or returned
-  done: ['queue'], // Can be reopened to queue
+  queue: ['active', 'done'],
+  active: ['review', 'queue'],
+  review: ['done', 'active'],
+  done: ['queue'],
+};
+
+// Validation schema
+const moveSchema = {
+  status: oneOf(['queue', 'active', 'review', 'done'] as const),
 };
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Params }
 ) {
-  const { id } = await params;
-  const supabase = await createClient();
+  try {
+    // Rate limiting
+    const rateLimitResult = rateLimit(request, 'write');
+    if (!rateLimitResult.allowed) {
+      return rateLimitResult.response;
+    }
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+    const { id } = await params;
+    const supabase = await createClient();
 
-  const body = await request.json();
-  const newStatus = body.status as RequestStatus;
+    // Auth check
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return handleError(Errors.unauthorized());
+    }
 
-  if (!newStatus || !['queue', 'active', 'review', 'done'].includes(newStatus)) {
-    return NextResponse.json(
-      { error: 'Invalid status' },
-      { status: 400 }
-    );
-  }
+    // Validate request body
+    const body = await request.json();
+    const validation = object(moveSchema)(body);
 
-  // Get user profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role, company_id')
-    .eq('id', user.id)
-    .single() as { data: { role: string; company_id: string } | null };
+    if (!validation.success) {
+      return handleError(Errors.validation('Invalid status', { errors: validation.errors }));
+    }
 
-  const isAdmin = profile?.role === 'admin';
+    const newStatus = validation.data!.status as RequestStatus;
 
-  // Get current request
-  const { data: currentRequest } = await supabase
-    .from('requests')
-    .select('*, company:companies(id, max_active_limit, status)')
-    .eq('id', id)
-    .single() as { data: { status: string; company_id: string; company: Record<string, unknown> } | null };
+    // Get user profile
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, company_id')
+      .eq('id', user.id)
+      .single();
 
-  if (!currentRequest) {
-    return NextResponse.json({ error: 'Request not found' }, { status: 404 });
-  }
+    if (!profile) {
+      return handleError(Errors.unauthorized());
+    }
 
-  const currentStatus = currentRequest.status as RequestStatus;
+    const isAdmin = profile.role === 'admin';
 
-  // Validate status transition
-  if (!VALID_TRANSITIONS[currentStatus]?.includes(newStatus)) {
-    return NextResponse.json(
-      { error: `Cannot move from ${currentStatus} to ${newStatus}` },
-      { status: 400 }
-    );
-  }
+    // Get current request
+    const { data: currentRequest, error: requestError } = await supabase
+      .from('requests')
+      .select('*, company:companies(id, max_active_limit, status)')
+      .eq('id', id)
+      .single();
 
-  // Only admins can move requests to "active"
-  if (newStatus === 'active' && !isAdmin) {
-    return NextResponse.json(
-      { error: 'Only admins can activate requests' },
-      { status: 403 }
-    );
-  }
+    if (requestError || !currentRequest) {
+      return handleError(Errors.notFound('Request'));
+    }
 
-  // Check active request limit when moving to active
-  if (newStatus === 'active') {
-    const company = currentRequest.company as {
-      id: string;
-      max_active_limit: number;
-      status: string;
+    const currentStatus = currentRequest.status as RequestStatus;
+
+    // Validate status transition
+    if (!VALID_TRANSITIONS[currentStatus]?.includes(newStatus)) {
+      return handleError(Errors.invalidStatusTransition(currentStatus, newStatus));
+    }
+
+    // Only admins can move requests to "active"
+    if (newStatus === 'active' && !isAdmin) {
+      return handleError(Errors.forbidden('Only admins can activate requests'));
+    }
+
+    // Check active request limit when moving to active
+    if (newStatus === 'active') {
+      const company = currentRequest.company as {
+        id: string;
+        max_active_limit: number;
+        status: string;
+      };
+
+      const { count } = await supabase
+        .from('requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('company_id', currentRequest.company_id)
+        .eq('status', 'active');
+
+      if (count !== null && count >= company.max_active_limit) {
+        return handleError(
+          Errors.limitReached(
+            `Client has reached their active request limit (${company.max_active_limit}). Complete or archive an active request first.`,
+            { limit: company.max_active_limit, current: count }
+          )
+        );
+      }
+    }
+
+    // Clients can only move their own company's requests (from review to done)
+    if (!isAdmin) {
+      if (currentRequest.company_id !== profile.company_id) {
+        return handleError(Errors.forbidden('Not authorized to move this request'));
+      }
+
+      if (!(currentStatus === 'review' && newStatus === 'done')) {
+        return handleError(Errors.forbidden('Clients can only mark reviewed requests as complete'));
+      }
+    }
+
+    // Build update data
+    const updateData: Record<string, unknown> = {
+      status: newStatus,
+      updated_at: new Date().toISOString(),
     };
 
-    // Count current active requests for this company
-    const { count } = await supabase
+    // Set completed_at when marking as done
+    if (newStatus === 'done' && currentStatus !== 'done') {
+      updateData.completed_at = new Date().toISOString();
+    }
+
+    // Clear completed_at when reopening
+    if (currentStatus === 'done' && newStatus !== 'done') {
+      updateData.completed_at = null;
+    }
+
+    // Update the request status
+    const { data, error } = await supabase
       .from('requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('company_id', currentRequest.company_id)
-      .eq('status', 'active') as { count: number | null };
+      .update(updateData)
+      .eq('id', id)
+      .select('*, company:companies(id, name, status, plan_tier)')
+      .single();
 
-    if (count !== null && count >= company.max_active_limit) {
-      return NextResponse.json(
-        {
-          error: `Client has reached their active request limit (${company.max_active_limit}). Complete or archive an active request first.`,
-          code: 'LIMIT_REACHED',
-        },
-        { status: 403 }
-      );
-    }
-  }
-
-  // Clients can only move their own company's requests (from review to done)
-  if (!isAdmin) {
-    if (currentRequest.company_id !== profile?.company_id) {
-      return NextResponse.json(
-        { error: 'Not authorized to move this request' },
-        { status: 403 }
-      );
+    if (error) {
+      logger.error('Error moving request', error, { requestId: id, newStatus });
+      return handleError(Errors.database('Failed to move request'));
     }
 
-    // Clients can only move from review to done
-    if (!(currentStatus === 'review' && newStatus === 'done')) {
-      return NextResponse.json(
-        { error: 'Clients can only mark reviewed requests as complete' },
-        { status: 403 }
+    // Log activity
+    await supabase.from('activities').insert({
+      request_id: id,
+      user_id: user.id,
+      activity_type: 'status_change',
+      description: `Status changed from ${currentStatus} to ${newStatus}`,
+      metadata: {
+        from_status: currentStatus,
+        to_status: newStatus,
+      },
+    });
+
+    // Trigger workflow engine
+    try {
+      const workflowEngine = createWorkflowEngine(supabase);
+      await workflowEngine.onStatusChange(
+        data as Request,
+        currentStatus,
+        newStatus,
+        user.id
       );
+    } catch (workflowError) {
+      // Log but don't fail the request
+      logger.error('Workflow execution failed', workflowError, { requestId: id });
     }
+
+    logger.info('Request status changed', {
+      requestId: id,
+      from: currentStatus,
+      to: newStatus,
+      userId: user.id,
+    });
+
+    return successResponse(data);
+  } catch (error) {
+    return handleError(error);
   }
-
-  // Update the request status
-  const { data, error } = await (supabase
-    .from('requests') as any)
-    .update({ status: newStatus })
-    .eq('id', id)
-    .select('*, company:companies(id, name, status, plan_tier)')
-    .single() as { data: Record<string, unknown> | null; error: unknown };
-
-  if (error) {
-    console.error('Error moving request:', error);
-    return NextResponse.json(
-      { error: 'Failed to move request' },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json(data);
 }

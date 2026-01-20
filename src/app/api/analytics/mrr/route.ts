@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string }>();
 
   if (profile?.role !== 'admin') {
     return NextResponse.json(
@@ -35,13 +35,15 @@ export async function GET(request: NextRequest) {
         .from('client_services')
         .select('price, billing_cycle, status, service_type, company_id')
         .eq('status', 'active')
-        .eq('service_type', 'subscription');
+        .eq('service_type', 'subscription') as {
+          data: Array<{ price: number | null; billing_cycle: string | null; status: string; service_type: string; company_id: string }> | null
+        };
 
       // Get active companies
       const { data: activeCompanies } = await supabase
         .from('companies')
         .select('id')
-        .eq('status', 'active');
+        .eq('status', 'active') as { data: Array<{ id: string }> | null };
 
       const activeCompanyIds = new Set(activeCompanies?.map(c => c.id) || []);
 

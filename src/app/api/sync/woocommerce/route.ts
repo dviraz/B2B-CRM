@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string }>();
 
   if (profile?.role !== 'admin') {
     return NextResponse.json(
@@ -110,8 +110,8 @@ export async function POST(request: NextRequest) {
         })));
 
         // Check if company exists by WooCommerce customer ID
-        const { data: existingCompany } = await adminSupabase
-          .from('companies')
+        const { data: existingCompany } = await (adminSupabase
+          .from('companies') as ReturnType<typeof adminSupabase.from>)
           .select('id, name')
           .eq('woo_customer_id', wooCustomerId)
           .single();
@@ -120,10 +120,10 @@ export async function POST(request: NextRequest) {
 
         if (existingCompany) {
           // Update existing company
-          companyId = existingCompany.id;
+          companyId = (existingCompany as { id: string; name: string }).id;
 
-          await adminSupabase
-            .from('companies')
+          await (adminSupabase
+            .from('companies') as ReturnType<typeof adminSupabase.from>)
             .update({
               status: companyStatus,
               plan_tier: plan.tier,
@@ -143,8 +143,8 @@ export async function POST(request: NextRequest) {
             `${subscription.billing.first_name} ${subscription.billing.last_name}`.trim() ||
             `Customer ${wooCustomerId}`;
 
-          const { data: newCompany, error: companyError } = await adminSupabase
-            .from('companies')
+          const { data: newCompany, error: companyError } = await (adminSupabase
+            .from('companies') as ReturnType<typeof adminSupabase.from>)
             .insert({
               name: companyName,
               status: companyStatus,
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          companyId = newCompany.id;
+          companyId = (newCompany as { id: string }).id;
           result.companiesCreated++;
 
           // Create user account if email is available
@@ -181,8 +181,8 @@ export async function POST(request: NextRequest) {
 
             if (authData?.user && !authError) {
               // Update profile with company association
-              await adminSupabase
-                .from('profiles')
+              await (adminSupabase
+                .from('profiles') as ReturnType<typeof adminSupabase.from>)
                 .update({
                   company_id: companyId,
                   full_name: `${subscription.billing.first_name} ${subscription.billing.last_name}`.trim(),
@@ -219,8 +219,8 @@ export async function POST(request: NextRequest) {
             : null;
 
           // Check if service already exists
-          const { data: existingService } = await adminSupabase
-            .from('client_services')
+          const { data: existingService } = await (adminSupabase
+            .from('client_services') as ReturnType<typeof adminSupabase.from>)
             .select('id')
             .eq('company_id', companyId)
             .eq('woo_subscription_id', subscriptionId)
@@ -229,21 +229,21 @@ export async function POST(request: NextRequest) {
 
           if (existingService) {
             // Update existing service
-            await adminSupabase
-              .from('client_services')
+            await (adminSupabase
+              .from('client_services') as ReturnType<typeof adminSupabase.from>)
               .update({
                 status: serviceStatus,
                 price,
                 renewal_date: renewalDate,
                 end_date: endDate,
               })
-              .eq('id', existingService.id);
+              .eq('id', (existingService as { id: string }).id);
 
             result.servicesUpdated++;
           } else {
             // Create new service
-            await adminSupabase
-              .from('client_services')
+            await (adminSupabase
+              .from('client_services') as ReturnType<typeof adminSupabase.from>)
               .insert({
                 company_id: companyId,
                 service_name: item.name,
@@ -292,7 +292,7 @@ export async function GET(request: NextRequest) {
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string }>();
 
   if (profile?.role !== 'admin') {
     return NextResponse.json(
@@ -312,8 +312,8 @@ export async function GET(request: NextRequest) {
       .from('companies')
       .select('*', { count: 'exact', head: true });
 
-    const { count: servicesCount } = await supabase
-      .from('client_services')
+    const { count: servicesCount } = await (supabase
+      .from('client_services') as ReturnType<typeof supabase.from>)
       .select('*', { count: 'exact', head: true });
 
     return NextResponse.json({

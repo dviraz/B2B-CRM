@@ -27,7 +27,7 @@ export async function GET(
     .from('profiles')
     .select('role, company_id')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string; company_id: string | null }>();
 
   if (!profile) {
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
@@ -42,8 +42,8 @@ export async function GET(
   const statusFilter = searchParams.get('status');
   const typeFilter = searchParams.get('type');
 
-  let query = supabase
-    .from('client_services')
+  let query = (supabase
+    .from('client_services') as ReturnType<typeof supabase.from>)
     .select('*')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false });
@@ -87,7 +87,7 @@ export async function POST(
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string }>();
 
   if (profile?.role !== 'admin') {
     return NextResponse.json(
@@ -171,8 +171,8 @@ export async function POST(
     metadata: metadata || {},
   };
 
-  const { data: newService, error } = await supabase
-    .from('client_services')
+  const { data: newService, error } = await (supabase
+    .from('client_services') as ReturnType<typeof supabase.from>)
     .insert(serviceData)
     .select()
     .single();

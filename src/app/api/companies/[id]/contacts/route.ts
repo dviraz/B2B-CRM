@@ -22,7 +22,7 @@ export async function GET(
     .from('profiles')
     .select('role, company_id')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string; company_id: string | null }>();
 
   if (!profile) {
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
@@ -37,8 +37,8 @@ export async function GET(
   const activeOnly = searchParams.get('active_only') === 'true';
   const primaryOnly = searchParams.get('primary_only') === 'true';
 
-  let query = supabase
-    .from('contacts')
+  let query = (supabase
+    .from('contacts') as ReturnType<typeof supabase.from>)
     .select('*')
     .eq('company_id', companyId)
     .order('is_primary', { ascending: false })
@@ -83,7 +83,7 @@ export async function POST(
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string }>();
 
   if (profile?.role !== 'admin') {
     return NextResponse.json(
@@ -125,8 +125,8 @@ export async function POST(
     notes: notes?.trim() || null,
   };
 
-  const { data: newContact, error } = await supabase
-    .from('contacts')
+  const { data: newContact, error } = await (supabase
+    .from('contacts') as ReturnType<typeof supabase.from>)
     .insert(contactData)
     .select()
     .single();

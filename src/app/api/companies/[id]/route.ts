@@ -73,7 +73,7 @@ export async function PUT(
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string }>();
 
   if (profile?.role !== 'admin') {
     return NextResponse.json(
@@ -206,8 +206,8 @@ export async function PUT(
     );
   }
 
-  const { data: updatedCompany, error } = await supabase
-    .from('companies')
+  const { data: updatedCompany, error } = await (supabase
+    .from('companies') as ReturnType<typeof supabase.from>)
     .update(updateData)
     .eq('id', id)
     .select()

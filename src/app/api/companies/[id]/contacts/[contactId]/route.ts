@@ -21,7 +21,7 @@ export async function GET(
     .from('profiles')
     .select('role, company_id')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string; company_id: string | null }>();
 
   if (!profile) {
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
@@ -31,8 +31,8 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: contact, error } = await supabase
-    .from('contacts')
+  const { data: contact, error } = await (supabase
+    .from('contacts') as ReturnType<typeof supabase.from>)
     .select('*')
     .eq('id', contactId)
     .eq('company_id', companyId)
@@ -69,7 +69,7 @@ export async function PUT(
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string }>();
 
   if (profile?.role !== 'admin') {
     return NextResponse.json(
@@ -79,8 +79,8 @@ export async function PUT(
   }
 
   // Verify contact exists and belongs to company
-  const { data: existingContact, error: fetchError } = await supabase
-    .from('contacts')
+  const { data: existingContact, error: fetchError } = await (supabase
+    .from('contacts') as ReturnType<typeof supabase.from>)
     .select('id')
     .eq('id', contactId)
     .eq('company_id', companyId)
@@ -120,8 +120,8 @@ export async function PUT(
     );
   }
 
-  const { data: updatedContact, error } = await supabase
-    .from('contacts')
+  const { data: updatedContact, error } = await (supabase
+    .from('contacts') as ReturnType<typeof supabase.from>)
     .update(updateData)
     .eq('id', contactId)
     .select()
@@ -156,7 +156,7 @@ export async function DELETE(
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string }>();
 
   if (profile?.role !== 'admin') {
     return NextResponse.json(
@@ -166,8 +166,8 @@ export async function DELETE(
   }
 
   // Verify contact exists and belongs to company
-  const { data: existingContact, error: fetchError } = await supabase
-    .from('contacts')
+  const { data: existingContact, error: fetchError } = await (supabase
+    .from('contacts') as ReturnType<typeof supabase.from>)
     .select('id')
     .eq('id', contactId)
     .eq('company_id', companyId)
@@ -177,8 +177,8 @@ export async function DELETE(
     return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
   }
 
-  const { error } = await supabase
-    .from('contacts')
+  const { error } = await (supabase
+    .from('contacts') as ReturnType<typeof supabase.from>)
     .delete()
     .eq('id', contactId);
 

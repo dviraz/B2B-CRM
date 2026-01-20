@@ -27,7 +27,7 @@ export async function GET(
     .from('profiles')
     .select('role, company_id')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string; company_id: string | null }>();
 
   if (!profile) {
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
@@ -37,8 +37,8 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: service, error } = await supabase
-    .from('client_services')
+  const { data: service, error } = await (supabase
+    .from('client_services') as ReturnType<typeof supabase.from>)
     .select('*')
     .eq('id', serviceId)
     .eq('company_id', companyId)
@@ -75,7 +75,7 @@ export async function PUT(
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string }>();
 
   if (profile?.role !== 'admin') {
     return NextResponse.json(
@@ -85,8 +85,8 @@ export async function PUT(
   }
 
   // Verify service exists and belongs to company
-  const { data: existingService, error: fetchError } = await supabase
-    .from('client_services')
+  const { data: existingService, error: fetchError } = await (supabase
+    .from('client_services') as ReturnType<typeof supabase.from>)
     .select('id')
     .eq('id', serviceId)
     .eq('company_id', companyId)
@@ -172,8 +172,8 @@ export async function PUT(
     );
   }
 
-  const { data: updatedService, error } = await supabase
-    .from('client_services')
+  const { data: updatedService, error } = await (supabase
+    .from('client_services') as ReturnType<typeof supabase.from>)
     .update(updateData)
     .eq('id', serviceId)
     .select()
@@ -208,7 +208,7 @@ export async function DELETE(
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single<{ role: string }>();
 
   if (profile?.role !== 'admin') {
     return NextResponse.json(
@@ -218,8 +218,8 @@ export async function DELETE(
   }
 
   // Verify service exists and belongs to company
-  const { data: existingService, error: fetchError } = await supabase
-    .from('client_services')
+  const { data: existingService, error: fetchError } = await (supabase
+    .from('client_services') as ReturnType<typeof supabase.from>)
     .select('id')
     .eq('id', serviceId)
     .eq('company_id', companyId)
@@ -229,8 +229,8 @@ export async function DELETE(
     return NextResponse.json({ error: 'Service not found' }, { status: 404 });
   }
 
-  const { error } = await supabase
-    .from('client_services')
+  const { error } = await (supabase
+    .from('client_services') as ReturnType<typeof supabase.from>)
     .delete()
     .eq('id', serviceId);
 

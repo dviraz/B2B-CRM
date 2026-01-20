@@ -24,7 +24,25 @@ export async function POST(request: NextRequest) {
     // Get raw body for signature verification
     const rawBody = await request.text();
 
-    // Verify webhook signature
+    // Handle empty body (WooCommerce ping)
+    if (!rawBody || rawBody.trim() === '') {
+      return NextResponse.json({ status: 'ok', message: 'Webhook endpoint active' });
+    }
+
+    // Parse the payload
+    let payload: WooWebhookPayload;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ status: 'ok', message: 'Ping received' });
+    }
+
+    // Handle WooCommerce ping/test requests
+    if (!payload.customer_id && !payload.status) {
+      return NextResponse.json({ status: 'ok', message: 'Webhook verified' });
+    }
+
+    // Verify webhook signature for actual webhook events
     const signature = request.headers.get('x-wc-webhook-signature');
     const webhookSecret = process.env.WOO_WEBHOOK_SECRET;
 
@@ -38,10 +56,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Parse the payload
-    const payload: WooWebhookPayload = JSON.parse(rawBody);
-
-    // Validate required fields
+    // Validate required fields for actual events
     if (!payload.customer_id || !payload.status) {
       return NextResponse.json(
         { error: 'Invalid payload: missing required fields' },

@@ -201,3 +201,18 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({ status: 'ok' });
 }
+
+// Handle HEAD requests (used by some webhook verification systems)
+export async function HEAD() {
+  return new NextResponse(null, { status: 200 });
+}
+
+// Handle OPTIONS requests (CORS preflight)
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Allow': 'GET, POST, HEAD, OPTIONS',
+    },
+  });
+}

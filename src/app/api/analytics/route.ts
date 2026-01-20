@@ -132,6 +132,8 @@ export async function GET(request: Request) {
 
   // Build final response objects from the single-pass results
   const total = requests.length;
+  const completed = statusCounts.done;
+  const active = statusCounts.active;
   const avgCompletionTime = completedCount > 0
     ? Math.round(totalCompletionTime / completedCount / (1000 * 60 * 60))
     : 0;

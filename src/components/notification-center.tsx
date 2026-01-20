@@ -20,10 +20,16 @@ interface NotificationCenterProps {
 }
 
 export function NotificationCenter({ className }: NotificationCenterProps) {
+  const [mounted, setMounted] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const router = useRouter();
+
+  // Prevent hydration mismatch with Radix UI
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -120,6 +126,19 @@ export function NotificationCenter({ className }: NotificationCenterProps) {
     }
     setIsOpen(false);
   };
+
+  // Render placeholder on server to prevent hydration mismatch
+  if (!mounted) {
+    return (
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn('relative', className)}
+      >
+        <Bell className="h-5 w-5" />
+      </Button>
+    );
+  }
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>

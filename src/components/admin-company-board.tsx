@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { ArrowLeft, Plus, LayoutGrid, Users, Package, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { KanbanBoard } from '@/components/kanban';
 import { NewRequestDialog } from '@/components/new-request-dialog';
 import { RequestDetailDialog } from '@/components/request-detail-dialog';
@@ -12,6 +13,9 @@ import { SearchBar } from '@/components/search-bar';
 import { AdvancedFilters, type FilterValues } from '@/components/advanced-filters';
 import { FilterBadges } from '@/components/filter-badges';
 import { BulkActionToolbar } from '@/components/bulk-action-toolbar';
+import { CompanyDetailsForm } from '@/components/company-details-form';
+import { CompanyContacts } from '@/components/company-contacts';
+import { CompanyServices } from '@/components/company-services';
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
 import type { Company, Request, RequestStatus, Priority } from '@/types';
 
@@ -22,10 +26,11 @@ interface AdminCompanyBoardProps {
 }
 
 export function AdminCompanyBoard({
-  company,
+  company: initialCompany,
   requests: initialRequests,
   activeCount: initialActiveCount,
 }: AdminCompanyBoardProps) {
+  const [company, setCompany] = useState(initialCompany);
   const [requests, setRequests] = useState(initialRequests);
   const [activeCount, setActiveCount] = useState(initialActiveCount);
   const [isNewRequestOpen, setIsNewRequestOpen] = useState(false);
@@ -33,6 +38,7 @@ export function AdminCompanyBoard({
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<FilterValues>({});
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; full_name: string | null; email: string }>>([]);
+  const [activeTab, setActiveTab] = useState('requests');
 
   // Fetch team members for filter dropdown
   useEffect(() => {
@@ -275,7 +281,7 @@ export function AdminCompanyBoard({
               <Badge variant="outline">{company.plan_tier}</Badge>
             </div>
             <p className="text-muted-foreground mt-1">
-              Manage requests for this client
+              Manage requests and details for this client
             </p>
           </div>
 
@@ -287,45 +293,14 @@ export function AdminCompanyBoard({
               </Badge>
             </div>
 
-            <Button onClick={() => setIsNewRequestOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Request
-            </Button>
+            {activeTab === 'requests' && (
+              <Button onClick={() => setIsNewRequestOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Request
+              </Button>
+            )}
           </div>
         </div>
-
-        {/* Search and Filters */}
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-          <SearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search requests..."
-            className="sm:w-64"
-          />
-          <AdvancedFilters
-            filters={filters}
-            onFiltersChange={setFilters}
-            teamMembers={teamMembers}
-          />
-          <BulkActionToolbar
-            selectedCount={selectedCount}
-            isSelectionMode={isSelectionMode}
-            onToggleSelectionMode={toggleSelectionMode}
-            onClearSelection={clearSelection}
-            onBulkStatusChange={handleBulkStatusChange}
-            onBulkPriorityChange={handleBulkPriorityChange}
-            onBulkAssign={handleBulkAssign}
-            onBulkDelete={handleBulkDelete}
-            teamMembers={teamMembers}
-          />
-        </div>
-
-        {/* Active filter badges */}
-        <FilterBadges
-          filters={filters}
-          onRemove={removeFilter}
-          teamMembers={teamMembers}
-        />
       </div>
 
       {/* Status Banners */}
@@ -345,17 +320,94 @@ export function AdminCompanyBoard({
         </div>
       )}
 
-      {/* Kanban Board */}
-      <KanbanBoard
-        requests={filteredRequests}
-        isAdmin={true}
-        companyMaxActive={company.max_active_limit}
-        onMoveRequest={handleMoveRequest}
-        onRequestClick={setSelectedRequest}
-        isSelectionMode={isSelectionMode}
-        isSelected={isSelected}
-        onToggleSelect={toggleSelection}
-      />
+      {/* Tabs for different sections */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+          <TabsTrigger value="requests" className="flex items-center gap-2">
+            <LayoutGrid className="h-4 w-4" />
+            <span className="hidden sm:inline">Requests</span>
+          </TabsTrigger>
+          <TabsTrigger value="details" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Details</span>
+          </TabsTrigger>
+          <TabsTrigger value="contacts" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">Contacts</span>
+          </TabsTrigger>
+          <TabsTrigger value="services" className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            <span className="hidden sm:inline">Services</span>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Requests Tab */}
+        <TabsContent value="requests" className="space-y-4">
+          {/* Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            <SearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search requests..."
+              className="sm:w-64"
+            />
+            <AdvancedFilters
+              filters={filters}
+              onFiltersChange={setFilters}
+              teamMembers={teamMembers}
+            />
+            <BulkActionToolbar
+              selectedCount={selectedCount}
+              isSelectionMode={isSelectionMode}
+              onToggleSelectionMode={toggleSelectionMode}
+              onClearSelection={clearSelection}
+              onBulkStatusChange={handleBulkStatusChange}
+              onBulkPriorityChange={handleBulkPriorityChange}
+              onBulkAssign={handleBulkAssign}
+              onBulkDelete={handleBulkDelete}
+              teamMembers={teamMembers}
+            />
+          </div>
+
+          {/* Active filter badges */}
+          <FilterBadges
+            filters={filters}
+            onRemove={removeFilter}
+            teamMembers={teamMembers}
+          />
+
+          {/* Kanban Board */}
+          <KanbanBoard
+            requests={filteredRequests}
+            isAdmin={true}
+            companyMaxActive={company.max_active_limit}
+            onMoveRequest={handleMoveRequest}
+            onRequestClick={setSelectedRequest}
+            isSelectionMode={isSelectionMode}
+            isSelected={isSelected}
+            onToggleSelect={toggleSelection}
+          />
+        </TabsContent>
+
+        {/* Company Details Tab */}
+        <TabsContent value="details">
+          <CompanyDetailsForm
+            company={company}
+            isAdmin={true}
+            onUpdate={(updatedCompany) => setCompany(updatedCompany)}
+          />
+        </TabsContent>
+
+        {/* Contacts Tab */}
+        <TabsContent value="contacts">
+          <CompanyContacts companyId={company.id} isAdmin={true} />
+        </TabsContent>
+
+        {/* Services Tab */}
+        <TabsContent value="services">
+          <CompanyServices companyId={company.id} isAdmin={true} />
+        </TabsContent>
+      </Tabs>
 
       {/* New Request Dialog */}
       <NewRequestDialog

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { verifyWebhookSignature, getPlanFromProducts } from '@/lib/woocommerce/client';
-import type { WooWebhookPayload, CompanyStatus } from '@/types';
+import type { WooWebhookPayload, CompanyStatus, ServiceStatus, ServiceType, BillingCycle } from '@/types';
 
 // Map WooCommerce status to our company status
 function mapWooStatus(wooStatus: string): CompanyStatus {
@@ -17,6 +17,45 @@ function mapWooStatus(wooStatus: string): CompanyStatus {
     default:
       return 'paused';
   }
+}
+
+// Map WooCommerce subscription status to service status
+function mapWooToServiceStatus(wooStatus: string): ServiceStatus {
+  switch (wooStatus) {
+    case 'active':
+      return 'active';
+    case 'on-hold':
+    case 'pending':
+      return 'paused';
+    case 'cancelled':
+    case 'expired':
+      return 'cancelled';
+    default:
+      return 'pending';
+  }
+}
+
+// Map WooCommerce billing period to our billing cycle
+function mapBillingCycle(billingPeriod?: string): BillingCycle {
+  switch (billingPeriod) {
+    case 'day':
+    case 'week':
+    case 'month':
+      return 'monthly';
+    case 'year':
+      return 'yearly';
+    default:
+      return 'monthly';
+  }
+}
+
+// Extended payload type with more WooCommerce fields
+interface ExtendedWooPayload extends WooWebhookPayload {
+  billing_period?: string;
+  billing_interval?: number;
+  total?: string;
+  order_id?: number;
+  next_payment_date?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -76,6 +115,8 @@ export async function POST(request: NextRequest) {
       .eq('woo_customer_id', wooCustomerId)
       .single() as { data: { id: string } | null };
 
+    const extendedPayload = payload as ExtendedWooPayload;
+
     if (existingCompany) {
       // Update existing company
       const { error: updateError } = await (supabase
@@ -93,6 +134,57 @@ export async function POST(request: NextRequest) {
           { error: 'Failed to update company' },
           { status: 500 }
         );
+      }
+
+      // Update/sync services from subscription
+      const serviceStatus = mapWooToServiceStatus(payload.status);
+      const subscriptionId = String(payload.id);
+
+      // Update existing services linked to this subscription
+      const { error: serviceUpdateError } = await (supabase
+        .from('client_services') as any)
+        .update({ status: serviceStatus })
+        .eq('company_id', existingCompany.id)
+        .eq('woo_subscription_id', subscriptionId);
+
+      if (serviceUpdateError) {
+        console.error('Error updating services:', serviceUpdateError);
+      }
+
+      // Check if we need to create services for new line items
+      for (const item of payload.line_items || []) {
+        const productId = String(item.product_id);
+
+        // Check if service already exists for this product
+        const { data: existingService } = await supabase
+          .from('client_services')
+          .select('id')
+          .eq('company_id', existingCompany.id)
+          .eq('woo_product_id', productId)
+          .eq('woo_subscription_id', subscriptionId)
+          .single();
+
+        if (!existingService) {
+          // Create new service for this product
+          const billingCycle = mapBillingCycle(extendedPayload.billing_period);
+          const price = extendedPayload.total ? parseFloat(extendedPayload.total) : null;
+          const renewalDate = extendedPayload.next_payment_date
+            ? new Date(extendedPayload.next_payment_date).toISOString().split('T')[0]
+            : null;
+
+          await (supabase.from('client_services') as any).insert({
+            company_id: existingCompany.id,
+            service_name: item.name,
+            service_type: 'subscription' as ServiceType,
+            status: serviceStatus,
+            price,
+            billing_cycle: billingCycle,
+            start_date: new Date().toISOString().split('T')[0],
+            renewal_date: renewalDate,
+            woo_product_id: productId,
+            woo_subscription_id: subscriptionId,
+          });
+        }
       }
 
       return NextResponse.json({

@@ -2,15 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Building2, ArrowRight } from 'lucide-react';
+import { Building2, ArrowRight, DollarSign } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { WooCommerceSync } from '@/components/woocommerce-sync';
 import type { CompanyWithStats } from '@/types';
 
 export function AdminDashboard() {
   const [companies, setCompanies] = useState<CompanyWithStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [totalMrr, setTotalMrr] = useState<number | null>(null);
 
   useEffect(() => {
     async function fetchCompanies() {
@@ -22,7 +24,20 @@ export function AdminDashboard() {
       setIsLoading(false);
     }
 
+    async function fetchMrr() {
+      try {
+        const response = await fetch('/api/analytics/mrr');
+        if (response.ok) {
+          const data = await response.json();
+          setTotalMrr(data.total_mrr);
+        }
+      } catch {
+        // MRR endpoint might not exist yet
+      }
+    }
+
     fetchCompanies();
+    fetchMrr();
   }, []);
 
   const activeCompanies = companies.filter((c) => c.status === 'active');
@@ -52,7 +67,7 @@ export function AdminDashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -98,6 +113,20 @@ export function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalActiveRequests}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+              <DollarSign className="h-4 w-4" />
+              Monthly Revenue
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {totalMrr !== null ? `$${totalMrr.toFixed(2)}` : '-'}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -164,6 +193,12 @@ export function AdminDashboard() {
             ))
           )}
         </div>
+      </div>
+
+      {/* WooCommerce Sync */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold mb-4">WooCommerce Integration</h2>
+        <WooCommerceSync />
       </div>
     </div>
   );

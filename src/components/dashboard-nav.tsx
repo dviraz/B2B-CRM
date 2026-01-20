@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { LogOut, User, Building2, LayoutDashboard, Users, Settings, BarChart3, FileText, Zap, Shield } from 'lucide-react';
@@ -28,9 +29,15 @@ interface DashboardNavProps {
 }
 
 export function DashboardNav({ user, company }: DashboardNavProps) {
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const isAdmin = user.role === 'admin';
+
+  // Prevent hydration mismatch with Radix UI
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSignOut = async () => {
     const supabase = createClient();
@@ -151,48 +158,59 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
 
           <NotificationCenter />
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback>{initials}</AvatarFallback>
-                </Avatar>
-                <span className="hidden sm:inline-block">
-                  {user.fullName || user.email}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <div className="px-2 py-1.5">
-                <p className="text-sm font-medium">{user.fullName || 'User'}</p>
-                <p className="text-xs text-muted-foreground">{user.email}</p>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <User className="h-4 w-4 mr-2" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/settings">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Settings
-                </Link>
-              </DropdownMenuItem>
-              {isAdmin && (
+          {mounted ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  </Avatar>
+                  <span className="hidden sm:inline-block">
+                    {user.fullName || user.email}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <div className="px-2 py-1.5">
+                  <p className="text-sm font-medium">{user.fullName || 'User'}</p>
+                  <p className="text-xs text-muted-foreground">{user.email}</p>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>
+                  <User className="h-4 w-4 mr-2" />
+                  Profile
+                </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href="/dashboard/admin">
-                    <Users className="h-4 w-4 mr-2" />
-                    Admin Panel
+                  <Link href="/dashboard/settings">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Settings
                   </Link>
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard/admin">
+                      <Users className="h-4 w-4 mr-2" />
+                      Admin Panel
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button variant="ghost" size="sm" className="gap-2">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback>{initials}</AvatarFallback>
+              </Avatar>
+              <span className="hidden sm:inline-block">
+                {user.fullName || user.email}
+              </span>
+            </Button>
+          )}
         </div>
       </div>
     </header>

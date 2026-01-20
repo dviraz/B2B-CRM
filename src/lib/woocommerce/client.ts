@@ -4,12 +4,46 @@ const WOO_STORE_URL = process.env.WOO_STORE_URL!;
 const WOO_CONSUMER_KEY = process.env.WOO_CONSUMER_KEY!;
 const WOO_CONSUMER_SECRET = process.env.WOO_CONSUMER_SECRET!;
 
-interface WooSubscription {
+export interface WooLineItem {
+  product_id: number;
+  name: string;
+  quantity: number;
+  subtotal: string;
+  total: string;
+}
+
+export interface WooBilling {
+  first_name: string;
+  last_name: string;
+  company: string;
+  email: string;
+  phone: string;
+  address_1: string;
+  city: string;
+  state: string;
+  country: string;
+}
+
+export interface WooSubscription {
   id: number;
   status: string;
   customer_id: number;
   billing_period: string;
+  billing_interval: number;
   next_payment_date: string;
+  start_date: string;
+  end_date: string | null;
+  total: string;
+  billing: WooBilling;
+  line_items: WooLineItem[];
+}
+
+export interface WooCustomer {
+  id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  billing: WooBilling;
 }
 
 export class WooCommerceClient {
@@ -65,8 +99,83 @@ export class WooCommerceClient {
     });
   }
 
-  async getCustomer(customerId: number) {
-    return this.request(`/customers/${customerId}`);
+  async getCustomer(customerId: number): Promise<WooCustomer> {
+    return this.request<WooCustomer>(`/customers/${customerId}`);
+  }
+
+  /**
+   * Fetch all subscriptions with pagination
+   * WooCommerce API returns max 100 per page
+   */
+  async getAllSubscriptions(status?: string): Promise<WooSubscription[]> {
+    const allSubscriptions: WooSubscription[] = [];
+    let page = 1;
+    const perPage = 100;
+    let hasMore = true;
+
+    while (hasMore) {
+      const params = new URLSearchParams({
+        page: String(page),
+        per_page: String(perPage),
+      });
+
+      if (status) {
+        params.set('status', status);
+      }
+
+      const subscriptions = await this.request<WooSubscription[]>(
+        `/subscriptions?${params.toString()}`
+      );
+
+      allSubscriptions.push(...subscriptions);
+
+      if (subscriptions.length < perPage) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    }
+
+    return allSubscriptions;
+  }
+
+  /**
+   * Fetch subscriptions for a specific customer
+   */
+  async getCustomerSubscriptions(customerId: number): Promise<WooSubscription[]> {
+    return this.request<WooSubscription[]>(`/subscriptions?customer=${customerId}`);
+  }
+
+  /**
+   * Get all orders (for one-time purchases)
+   */
+  async getAllOrders(status?: string): Promise<any[]> {
+    const allOrders: any[] = [];
+    let page = 1;
+    const perPage = 100;
+    let hasMore = true;
+
+    while (hasMore) {
+      const params = new URLSearchParams({
+        page: String(page),
+        per_page: String(perPage),
+      });
+
+      if (status) {
+        params.set('status', status);
+      }
+
+      const orders = await this.request<any[]>(`/orders?${params.toString()}`);
+      allOrders.push(...orders);
+
+      if (orders.length < perPage) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    }
+
+    return allOrders;
   }
 }
 

@@ -18,6 +18,40 @@ export type TriggerType = 'status_change' | 'due_date_approaching' | 'comment_ad
 export type ActionType = 'notify' | 'assign' | 'change_status' | 'change_priority' | 'send_email' | 'webhook';
 export type ActivityType = 'created' | 'status_change' | 'priority_change' | 'due_date_change' | 'comment' | 'assignment' | 'file_upload';
 
+// CRM Enhancement enums
+export type IndustryType =
+  | 'restaurant'
+  | 'dental'
+  | 'medical'
+  | 'legal'
+  | 'real_estate'
+  | 'home_services'
+  | 'automotive'
+  | 'retail'
+  | 'fitness'
+  | 'beauty_spa'
+  | 'professional_services'
+  | 'construction'
+  | 'financial_services'
+  | 'technology'
+  | 'education'
+  | 'nonprofit'
+  | 'other';
+
+export type BusinessType = 'b2b' | 'b2c' | 'both';
+
+export type RevenueRange =
+  | 'under_100k'
+  | '100k_500k'
+  | '500k_1m'
+  | '1m_5m'
+  | '5m_10m'
+  | 'over_10m';
+
+export type ServiceType = 'subscription' | 'one_time';
+export type ServiceStatus = 'active' | 'paused' | 'cancelled' | 'completed' | 'pending';
+export type BillingCycle = 'monthly' | 'quarterly' | 'yearly' | 'one_time';
+
 // ============================================
 // CORE ENTITIES
 // ============================================
@@ -30,8 +64,30 @@ export interface Company {
   max_active_limit: number;
   woo_customer_id: string | null;
   stripe_customer_id: string | null;
+  // Business intelligence fields
+  industry: IndustryType | null;
+  business_type: BusinessType | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  website_url: string | null;
+  google_business_url: string | null;
+  facebook_url: string | null;
+  instagram_handle: string | null;
+  linkedin_url: string | null;
+  phone: string | null;
+  employee_count: number | null;
+  annual_revenue_range: RevenueRange | null;
+  logo_url: string | null;
+  notes: string | null;
+  onboarding_completed_at: string | null;
+  primary_contact_id: string | null;
   created_at: string;
   updated_at: string;
+  // Joined relations
+  primary_contact?: Contact;
+  contacts?: Contact[];
+  services?: ClientService[];
 }
 
 export interface Profile {
@@ -275,6 +331,80 @@ export interface Activity {
   user?: Pick<Profile, 'id' | 'email' | 'full_name' | 'avatar_url'>;
 }
 
+// ============================================
+// CONTACTS (Multi-Contact Support)
+// ============================================
+
+export interface Contact {
+  id: string;
+  company_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  role: string | null;
+  is_primary: boolean;
+  is_billing_contact: boolean;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined relations
+  company?: Company;
+}
+
+// ============================================
+// CLIENT SERVICES (Service/Subscription Tracking)
+// ============================================
+
+export interface ClientService {
+  id: string;
+  company_id: string;
+  service_name: string;
+  service_type: ServiceType;
+  status: ServiceStatus;
+  price: number | null;
+  billing_cycle: BillingCycle | null;
+  start_date: string | null;
+  end_date: string | null;
+  renewal_date: string | null;
+  woo_product_id: string | null;
+  woo_subscription_id: string | null;
+  woo_order_id: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  // Joined relations
+  company?: Company;
+}
+
+// ============================================
+// COMPANY OVERVIEW (View)
+// ============================================
+
+export interface CompanyOverview {
+  id: string;
+  name: string;
+  status: CompanyStatus;
+  plan_tier: PlanTier;
+  industry: IndustryType | null;
+  business_type: BusinessType | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  phone: string | null;
+  website_url: string | null;
+  created_at: string;
+  onboarding_completed_at: string | null;
+  primary_contact_name: string | null;
+  primary_contact_email: string | null;
+  primary_contact_phone: string | null;
+  active_services_count: number;
+  mrr: number;
+  total_requests: number;
+  active_requests: number;
+}
+
 // Supabase Database types
 export interface Database {
   public: {
@@ -405,11 +535,41 @@ export interface Database {
         };
         Update: never;
       };
+      contacts: {
+        Row: Contact;
+        Insert: Omit<Contact, 'id' | 'created_at' | 'updated_at' | 'company'> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<Contact, 'id' | 'created_at' | 'company'>>;
+      };
+      client_services: {
+        Row: ClientService;
+        Insert: Omit<ClientService, 'id' | 'created_at' | 'updated_at' | 'company'> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<ClientService, 'id' | 'created_at' | 'company'>>;
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      company_overview: {
+        Row: CompanyOverview;
+      };
+    };
     Functions: {
       get_active_request_count: {
         Args: { company_uuid: string };
+        Returns: number;
+      };
+      get_company_mrr: {
+        Args: { company_uuid: string };
+        Returns: number;
+      };
+      get_total_mrr: {
+        Args: Record<string, never>;
         Returns: number;
       };
     };
@@ -426,6 +586,13 @@ export interface Database {
       audit_action: AuditAction;
       trigger_type: TriggerType;
       action_type: ActionType;
+      // CRM enhancement enums
+      industry_type: IndustryType;
+      business_type: BusinessType;
+      revenue_range: RevenueRange;
+      service_type: ServiceType;
+      service_status: ServiceStatus;
+      billing_cycle: BillingCycle;
     };
   };
 }

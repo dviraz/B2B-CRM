@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-// Common schemas
-export const uuidSchema = z.string().uuid('Invalid UUID format');
+// Common schemas - use regex for UUID validation to allow test UUIDs that don't follow RFC 4122 strictly
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const uuidSchema = z.string().regex(UUID_REGEX, 'Invalid UUID format');
 
 // Request schemas
 export const createRequestSchema = z.object({

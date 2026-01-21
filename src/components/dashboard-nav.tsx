@@ -54,24 +54,32 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
     .slice(0, 2);
 
   return (
-    <header className="border-b bg-card">
+    <header className="border-b glass-nav sticky top-0 z-40" role="banner">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <Link href="/dashboard" className="font-bold text-xl">
+          <Link
+            href="/dashboard"
+            className="font-bold text-xl text-gradient-primary hover:opacity-80 transition-opacity"
+            aria-label="AgencyOS Home"
+          >
             AgencyOS
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
             <Link href="/dashboard">
               <Button
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  pathname === '/dashboard' && 'bg-muted'
+                  'relative transition-all',
+                  pathname === '/dashboard' && 'bg-primary/10 text-primary'
                 )}
               >
                 <LayoutDashboard className="h-4 w-4 mr-2" />
                 Dashboard
+                {pathname === '/dashboard' && (
+                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4/5 h-0.5 bg-primary rounded-full glow-primary" />
+                )}
               </Button>
             </Link>
 
@@ -82,11 +90,15 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      pathname === '/dashboard/admin' && 'bg-muted'
+                      'relative transition-all',
+                      pathname === '/dashboard/admin' && 'bg-primary/10 text-primary'
                     )}
                   >
                     <Users className="h-4 w-4 mr-2" />
                     All Clients
+                    {pathname === '/dashboard/admin' && (
+                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4/5 h-0.5 bg-primary rounded-full glow-primary" />
+                    )}
                   </Button>
                 </Link>
                 <Link href="/dashboard/admin/analytics">
@@ -94,11 +106,15 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      pathname === '/dashboard/admin/analytics' && 'bg-muted'
+                      'relative transition-all',
+                      pathname === '/dashboard/admin/analytics' && 'bg-primary/10 text-primary'
                     )}
                   >
                     <BarChart3 className="h-4 w-4 mr-2" />
                     Analytics
+                    {pathname === '/dashboard/admin/analytics' && (
+                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4/5 h-0.5 bg-primary rounded-full glow-primary" />
+                    )}
                   </Button>
                 </Link>
                 <Link href="/dashboard/admin/templates">
@@ -106,11 +122,15 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      pathname === '/dashboard/admin/templates' && 'bg-muted'
+                      'relative transition-all',
+                      pathname === '/dashboard/admin/templates' && 'bg-primary/10 text-primary'
                     )}
                   >
                     <FileText className="h-4 w-4 mr-2" />
                     Templates
+                    {pathname === '/dashboard/admin/templates' && (
+                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4/5 h-0.5 bg-primary rounded-full glow-primary" />
+                    )}
                   </Button>
                 </Link>
                 <Link href="/dashboard/admin/workflows">
@@ -118,11 +138,15 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      pathname === '/dashboard/admin/workflows' && 'bg-muted'
+                      'relative transition-all',
+                      pathname === '/dashboard/admin/workflows' && 'bg-primary/10 text-primary'
                     )}
                   >
                     <Zap className="h-4 w-4 mr-2" />
                     Workflows
+                    {pathname === '/dashboard/admin/workflows' && (
+                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4/5 h-0.5 bg-primary rounded-full glow-primary" />
+                    )}
                   </Button>
                 </Link>
                 <Link href="/dashboard/admin/audit">
@@ -130,11 +154,15 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      pathname === '/dashboard/admin/audit' && 'bg-muted'
+                      'relative transition-all',
+                      pathname === '/dashboard/admin/audit' && 'bg-primary/10 text-primary'
                     )}
                   >
                     <Shield className="h-4 w-4 mr-2" />
                     Audit
+                    {pathname === '/dashboard/admin/audit' && (
+                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4/5 h-0.5 bg-primary rounded-full glow-primary" />
+                    )}
                   </Button>
                 </Link>
               </>
@@ -144,11 +172,11 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
 
         <div className="flex items-center gap-2">
           {company && (
-            <div className="hidden sm:flex items-center gap-2 text-sm mr-2">
+            <div className="hidden sm:flex items-center gap-2 text-sm mr-2 px-3 py-1.5 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
               <Building2 className="h-4 w-4 text-muted-foreground" />
-              <span className="text-muted-foreground">{company.name}</span>
+              <span className="text-foreground font-medium">{company.name}</span>
               <Badge
-                variant={company.status === 'active' ? 'default' : 'secondary'}
+                variant={company.status === 'active' ? 'success' : 'secondary'}
                 className="text-xs"
               >
                 {company.plan_tier}
@@ -161,11 +189,13 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
           {mounted ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>{initials}</AvatarFallback>
+                <Button variant="ghost" size="sm" className="gap-2 hover:bg-muted">
+                  <Avatar className="h-8 w-8 ring-2 ring-primary/10 hover:ring-primary/30 transition-all">
+                    <AvatarFallback className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 text-primary font-semibold">
+                      {initials}
+                    </AvatarFallback>
                   </Avatar>
-                  <span className="hidden sm:inline-block">
+                  <span className="hidden sm:inline-block font-medium">
                     {user.fullName || user.email}
                   </span>
                 </Button>
@@ -203,10 +233,12 @@ export function DashboardNav({ user, company }: DashboardNavProps) {
             </DropdownMenu>
           ) : (
             <Button variant="ghost" size="sm" className="gap-2">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>{initials}</AvatarFallback>
+              <Avatar className="h-8 w-8 ring-2 ring-primary/10">
+                <AvatarFallback className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 text-primary font-semibold">
+                  {initials}
+                </AvatarFallback>
               </Avatar>
-              <span className="hidden sm:inline-block">
+              <span className="hidden sm:inline-block font-medium">
                 {user.fullName || user.email}
               </span>
             </Button>

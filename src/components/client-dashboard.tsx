@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { KanbanBoard } from '@/components/kanban';
 import { NewRequestDialog } from '@/components/new-request-dialog';
 import { RequestDetailDialog } from '@/components/request-detail-dialog';
 import { SearchBar } from '@/components/search-bar';
+import { cn } from '@/lib/utils';
 import type { Company, Request, RequestStatus } from '@/types';
 
 interface ClientDashboardProps {
@@ -91,27 +92,62 @@ export function ClientDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Your Requests</h1>
-          <p className="text-muted-foreground">
-            Manage your design requests and track progress
-          </p>
-        </div>
+      {/* Hero Header with Gradient Background */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-background p-6 sm:p-8 animate-fade-in">
+        {/* Decorative Blur Orbs */}
+        <div className="absolute top-0 right-0 w-64 h-64 blur-orb blur-orb-primary -translate-y-1/2 translate-x-1/2 opacity-60" />
+        <div className="absolute bottom-0 left-1/4 w-48 h-48 blur-orb blur-orb-purple translate-y-1/2 opacity-40" />
+        <div className="absolute top-1/2 right-1/4 w-32 h-32 bg-indigo-400/10 rounded-full blur-[60px]" />
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Active:</span>
-            <Badge variant={isAtLimit ? 'destructive' : 'secondary'}>
-              {activeCount}/{company.max_active_limit}
-            </Badge>
+        <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="animate-slide-up opacity-0" style={{ animationDelay: '0.1s', animationFillMode: 'forwards' }}>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+              Your Requests
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Manage your design requests and track progress
+            </p>
           </div>
 
-          <Button onClick={() => setIsNewRequestOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Request
-          </Button>
+          <div className="flex items-center gap-4 animate-slide-up opacity-0" style={{ animationDelay: '0.2s', animationFillMode: 'forwards' }}>
+            {/* Active Count with Glow */}
+            <div className={cn(
+              'flex items-center gap-2 px-4 py-2 rounded-xl transition-all',
+              isAtLimit
+                ? 'bg-destructive/10 ring-1 ring-destructive/30'
+                : 'bg-card/50 backdrop-blur-sm ring-1 ring-border/50'
+            )}>
+              <span className="text-sm text-muted-foreground">Active:</span>
+              <span className={cn(
+                'font-bold tabular-nums',
+                isAtLimit ? 'text-destructive' : 'text-foreground'
+              )}>
+                {activeCount}
+              </span>
+              <span className="text-muted-foreground">/</span>
+              <span className="text-muted-foreground">{company.max_active_limit}</span>
+              {isAtLimit && (
+                <Badge variant="destructive" className="ml-1 text-xs">
+                  At limit
+                </Badge>
+              )}
+            </div>
+
+            {/* Glassmorphism New Request Button */}
+            <Button
+              onClick={() => setIsNewRequestOpen(true)}
+              className={cn(
+                'bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600',
+                'text-white shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30',
+                'transition-all hover:-translate-y-0.5 active:translate-y-0',
+                'border-0'
+              )}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              New Request
+              <Sparkles className="h-3 w-3 ml-1 opacity-70" />
+            </Button>
+          </div>
         </div>
       </div>
 

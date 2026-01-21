@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 export async function GET(request: NextRequest) {
+  // Apply rate limiting (read preset: 120/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.read);
+  if (rateLimitResult) return rateLimitResult;
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -43,6 +47,12 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query as { data: Array<Record<string, unknown>> | null; error: unknown };
 
   if (error) {
+    // Handle case where request_templates table doesn't exist
+    const errorObj = error as { code?: string; message?: string };
+    if (errorObj.code === '42P01' || errorObj.message?.includes('does not exist')) {
+      console.warn('request_templates table does not exist, returning empty array');
+      return NextResponse.json([]);
+    }
     console.error('Error fetching templates:', error);
     return NextResponse.json(
       { error: 'Failed to fetch templates' },
@@ -50,10 +60,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json(data || []);
 }
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting (mutation preset: 60/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.mutation);
+  if (rateLimitResult) return rateLimitResult;
+
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -103,6 +117,14 @@ export async function POST(request: NextRequest) {
     .single() as { data: Record<string, unknown> | null; error: unknown };
 
   if (error) {
+    // Handle case where request_templates table doesn't exist
+    const errorObj = error as { code?: string; message?: string };
+    if (errorObj.code === '42P01' || errorObj.message?.includes('does not exist')) {
+      return NextResponse.json(
+        { error: 'Templates feature is not yet configured' },
+        { status: 503 }
+      );
+    }
     console.error('Error creating template:', error);
     return NextResponse.json(
       { error: 'Failed to create template' },

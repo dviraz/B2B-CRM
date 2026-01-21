@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 export async function GET(request: NextRequest) {
+  // Apply rate limiting (read preset: 120/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.read);
+  if (rateLimitResult) return rateLimitResult;
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -15,10 +19,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('notifications')
-    .select(`
-      *,
-      request:requests(id, title)
-    `)
+    .select('*')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -41,6 +42,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting (mutation preset: 60/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.mutation);
+  if (rateLimitResult) return rateLimitResult;
+
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -64,9 +69,9 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
 
-  if (!body.user_id || !body.type || !body.title) {
+  if (!body.user_id || !body.title) {
     return NextResponse.json(
-      { error: 'user_id, type, and title are required' },
+      { error: 'user_id and title are required' },
       { status: 400 }
     );
   }
@@ -75,12 +80,9 @@ export async function POST(request: NextRequest) {
     .from('notifications') as any)
     .insert({
       user_id: body.user_id,
-      type: body.type,
       title: body.title,
       message: body.message || null,
       link: body.link || null,
-      related_request_id: body.related_request_id || null,
-      related_company_id: body.related_company_id || null,
     })
     .select()
     .single() as { data: Record<string, unknown> | null; error: unknown };

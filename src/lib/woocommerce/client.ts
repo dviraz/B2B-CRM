@@ -46,13 +46,31 @@ export interface WooCustomer {
   billing: WooBilling;
 }
 
+export interface WooOrder {
+  id: number;
+  status: string;
+  customer_id: number;
+  total: string;
+  date_created: string;
+  date_modified: string;
+  billing: WooBilling;
+  line_items: WooLineItem[];
+}
+
 export class WooCommerceClient {
   private baseUrl: string;
   private auth: string;
 
   constructor() {
+    if (!WOO_STORE_URL || !WOO_CONSUMER_KEY || !WOO_CONSUMER_SECRET) {
+      throw new Error('WooCommerce credentials not configured. Set WOO_STORE_URL, WOO_CONSUMER_KEY, and WOO_CONSUMER_SECRET environment variables.');
+    }
     this.baseUrl = `${WOO_STORE_URL}/wp-json/wc/v3`;
     this.auth = Buffer.from(`${WOO_CONSUMER_KEY}:${WOO_CONSUMER_SECRET}`).toString('base64');
+  }
+
+  static isConfigured(): boolean {
+    return !!(WOO_STORE_URL && WOO_CONSUMER_KEY && WOO_CONSUMER_SECRET);
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -149,8 +167,8 @@ export class WooCommerceClient {
   /**
    * Get all orders (for one-time purchases)
    */
-  async getAllOrders(status?: string): Promise<any[]> {
-    const allOrders: any[] = [];
+  async getAllOrders(status?: string): Promise<WooOrder[]> {
+    const allOrders: WooOrder[] = [];
     let page = 1;
     const perPage = 100;
     let hasMore = true;
@@ -165,7 +183,7 @@ export class WooCommerceClient {
         params.set('status', status);
       }
 
-      const orders = await this.request<any[]>(`/orders?${params.toString()}`);
+      const orders = await this.request<WooOrder[]>(`/orders?${params.toString()}`);
       allOrders.push(...orders);
 
       if (orders.length < perPage) {
@@ -196,13 +214,42 @@ export function verifyWebhookSignature(
 }
 
 // Product ID to plan tier mapping
-// Update these IDs to match your WooCommerce products
-export const PRODUCT_PLAN_MAP: Record<number, { tier: 'standard' | 'pro'; maxActive: number }> = {
-  // Example: Standard Plan product ID -> standard tier
-  // 123: { tier: 'standard', maxActive: 1 },
-  // Example: Pro Plan product ID -> pro tier
-  // 456: { tier: 'pro', maxActive: 2 },
-};
+// Configure these in .env.local or hardcode your WooCommerce product IDs here
+// Format: WOO_STANDARD_PRODUCT_IDS=123,456,789
+// Format: WOO_PRO_PRODUCT_IDS=111,222,333
+function buildProductPlanMap(): Record<number, { tier: 'standard' | 'pro'; maxActive: number }> {
+  const map: Record<number, { tier: 'standard' | 'pro'; maxActive: number }> = {};
+
+  // Get product IDs from environment variables
+  const standardIds = process.env.WOO_STANDARD_PRODUCT_IDS?.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) || [];
+  const proIds = process.env.WOO_PRO_PRODUCT_IDS?.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) || [];
+
+  // Map standard plan products
+  standardIds.forEach(id => {
+    map[id] = { tier: 'standard', maxActive: 1 };
+  });
+
+  // Map pro plan products
+  proIds.forEach(id => {
+    map[id] = { tier: 'pro', maxActive: 2 };
+  });
+
+  // Fallback to hardcoded values if environment variables not set
+  // TODO: Replace these example IDs with your actual WooCommerce product IDs
+  if (Object.keys(map).length === 0) {
+    console.warn('⚠️  WARNING: No WooCommerce product plan mapping configured!');
+    console.warn('⚠️  All subscriptions will default to Standard plan.');
+    console.warn('⚠️  Configure WOO_STANDARD_PRODUCT_IDS and WOO_PRO_PRODUCT_IDS in .env.local');
+
+    // Example hardcoded mapping (replace with your actual product IDs):
+    // map[123] = { tier: 'standard', maxActive: 1 };
+    // map[456] = { tier: 'pro', maxActive: 2 };
+  }
+
+  return map;
+}
+
+export const PRODUCT_PLAN_MAP = buildProductPlanMap();
 
 export function getPlanFromProducts(
   lineItems: Array<{ product_id: number; name: string }>
@@ -210,8 +257,16 @@ export function getPlanFromProducts(
   // Find the first matching product
   for (const item of lineItems) {
     const plan = PRODUCT_PLAN_MAP[item.product_id];
-    if (plan) return plan;
+    if (plan) {
+      console.log(`✓ Mapped product ${item.product_id} (${item.name}) to ${plan.tier} plan`);
+      return plan;
+    }
   }
+
+  // Log warning for unmapped products
+  const productInfo = lineItems.map(item => `${item.product_id} (${item.name})`).join(', ');
+  console.warn(`⚠️  WARNING: No plan mapping found for products: ${productInfo}`);
+  console.warn(`⚠️  Defaulting to standard plan. Configure product IDs in PRODUCT_PLAN_MAP or environment variables.`);
 
   // Default to standard if no match found
   return { tier: 'standard', maxActive: 1 };

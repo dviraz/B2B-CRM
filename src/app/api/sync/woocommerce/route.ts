@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { WooCommerceClient, getPlanFromProducts } from '@/lib/woocommerce/client';
-import type { ServiceStatus, BillingCycle } from '@/types/database';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
+
+type ServiceStatus = 'active' | 'paused' | 'cancelled' | 'pending';
+type BillingCycle = 'monthly' | 'quarterly' | 'yearly';
 
 // Map WooCommerce subscription status to service status
 function mapWooToServiceStatus(wooStatus: string): ServiceStatus {
@@ -57,6 +60,10 @@ interface SyncResult {
 
 // POST /api/sync/woocommerce - Full sync from WooCommerce
 export async function POST(request: NextRequest) {
+  // Apply strict rate limiting: 5 requests per minute (expensive operation)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.strict);
+  if (rateLimitResult) return rateLimitResult;
+
   const supabase = await createClient();
 
   // Check authentication
@@ -89,6 +96,14 @@ export async function POST(request: NextRequest) {
   };
 
   try {
+    // Check if WooCommerce is configured
+    if (!WooCommerceClient.isConfigured()) {
+      return NextResponse.json(
+        { error: 'WooCommerce integration is not configured. Set WOO_STORE_URL, WOO_CONSUMER_KEY, and WOO_CONSUMER_SECRET environment variables.' },
+        { status: 503 }
+      );
+    }
+
     // Use admin client for database operations
     const adminSupabase = createAdminClient();
     const wooClient = new WooCommerceClient();
@@ -202,6 +217,26 @@ export async function POST(request: NextRequest) {
         }
 
         // Sync services for each line item
+        // FIX: Fetch ALL existing services for this company in ONE query to avoid N+1
+        const { data: existingServices } = await (adminSupabase
+          .from('client_services') as ReturnType<typeof adminSupabase.from>)
+          .select('id, woo_product_id, woo_subscription_id')
+          .eq('company_id', companyId)
+          .eq('woo_subscription_id', subscriptionId);
+
+        // Create lookup map for O(1) access
+        const serviceMap = new Map<string, { id: string }>();
+        if (existingServices) {
+          for (const service of existingServices as Array<{ id: string; woo_product_id: string | null; woo_subscription_id: string | null }>) {
+            const key = `${service.woo_subscription_id}:${service.woo_product_id}`;
+            serviceMap.set(key, { id: service.id });
+          }
+        }
+
+        // Prepare batch operations
+        const servicesToUpdate: Array<{ id: string; updates: Record<string, unknown> }> = [];
+        const servicesToInsert: Array<Record<string, unknown>> = [];
+
         for (const item of subscription.line_items) {
           const productId = String(item.product_id);
           const billingCycle = mapBillingCycle(subscription.billing_period, subscription.billing_interval);
@@ -218,48 +253,53 @@ export async function POST(request: NextRequest) {
             ? new Date(subscription.end_date).toISOString().split('T')[0]
             : null;
 
-          // Check if service already exists
-          const { data: existingService } = await (adminSupabase
-            .from('client_services') as ReturnType<typeof adminSupabase.from>)
-            .select('id')
-            .eq('company_id', companyId)
-            .eq('woo_subscription_id', subscriptionId)
-            .eq('woo_product_id', productId)
-            .single();
+          const serviceKey = `${subscriptionId}:${productId}`;
+          const existingService = serviceMap.get(serviceKey);
 
           if (existingService) {
-            // Update existing service
-            await (adminSupabase
-              .from('client_services') as ReturnType<typeof adminSupabase.from>)
-              .update({
+            // Queue update
+            servicesToUpdate.push({
+              id: existingService.id,
+              updates: {
                 status: serviceStatus,
                 price,
                 renewal_date: renewalDate,
                 end_date: endDate,
-              })
-              .eq('id', (existingService as { id: string }).id);
-
-            result.servicesUpdated++;
+              },
+            });
           } else {
-            // Create new service
-            await (adminSupabase
-              .from('client_services') as ReturnType<typeof adminSupabase.from>)
-              .insert({
-                company_id: companyId,
-                service_name: item.name,
-                service_type: 'subscription',
-                status: serviceStatus,
-                price,
-                billing_cycle: billingCycle,
-                start_date: startDate,
-                renewal_date: renewalDate,
-                end_date: endDate,
-                woo_product_id: productId,
-                woo_subscription_id: subscriptionId,
-              });
-
-            result.servicesCreated++;
+            // Queue insert
+            servicesToInsert.push({
+              company_id: companyId,
+              service_name: item.name,
+              service_type: 'subscription',
+              status: serviceStatus,
+              price,
+              billing_cycle: billingCycle,
+              start_date: startDate,
+              renewal_date: renewalDate,
+              end_date: endDate,
+              woo_product_id: productId,
+              woo_subscription_id: subscriptionId,
+            });
           }
+        }
+
+        // Batch execute updates
+        for (const { id, updates } of servicesToUpdate) {
+          await (adminSupabase
+            .from('client_services') as ReturnType<typeof adminSupabase.from>)
+            .update(updates)
+            .eq('id', id);
+        }
+        result.servicesUpdated += servicesToUpdate.length;
+
+        // Batch execute inserts
+        if (servicesToInsert.length > 0) {
+          await (adminSupabase
+            .from('client_services') as ReturnType<typeof adminSupabase.from>)
+            .insert(servicesToInsert);
+          result.servicesCreated += servicesToInsert.length;
         }
       } catch (subError) {
         const errorMessage = subError instanceof Error ? subError.message : 'Unknown error';
@@ -302,6 +342,29 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Check if WooCommerce is configured
+    if (!WooCommerceClient.isConfigured()) {
+      // Return just database counts if WooCommerce is not configured
+      const { count: companiesCount } = await supabase
+        .from('companies')
+        .select('*', { count: 'exact', head: true });
+
+      const { count: servicesCount } = await (supabase
+        .from('client_services') as ReturnType<typeof supabase.from>)
+        .select('*', { count: 'exact', head: true });
+
+      return NextResponse.json({
+        woocommerce: {
+          configured: false,
+          message: 'WooCommerce integration is not configured',
+        },
+        database: {
+          companies: companiesCount || 0,
+          services: servicesCount || 0,
+        },
+      });
+    }
+
     const wooClient = new WooCommerceClient();
 
     // Get counts from WooCommerce

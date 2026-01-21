@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
+import { validateBody, createRequestSchema } from '@/lib/validations';
+import { withCacheHeaders, CachePresets } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
+  // Apply rate limiting (read preset: 120/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.read);
+  if (rateLimitResult) return rateLimitResult;
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -33,8 +39,7 @@ export async function GET(request: NextRequest) {
     .from('requests')
     .select(`
       *,
-      company:companies(id, name, status, plan_tier),
-      assignee:profiles!requests_assigned_to_fkey(id, email, full_name, avatar_url)
+      company:companies(id, name, status, plan_tier)
     `)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -99,10 +104,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json(data);
+  // Cache list data for 30 seconds with SWR
+  return withCacheHeaders(data, CachePresets.listData);
 }
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting (mutation preset: 60/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.mutation);
+  if (rateLimitResult) return rateLimitResult;
+
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -140,14 +150,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const body = await request.json();
+  // Validate request body
+  const { data: body, error: validationError } = await validateBody(
+    request,
+    createRequestSchema.partial({ company_id: true }) // company_id optional for clients
+  );
 
-  // Validate required fields
-  if (!body.title?.trim()) {
-    return NextResponse.json(
-      { error: 'Title is required' },
-      { status: 400 }
-    );
+  if (validationError || !body) {
+    return NextResponse.json({ error: validationError || 'Invalid request body' }, { status: 400 });
   }
 
   // For admins, allow specifying company_id
@@ -166,18 +176,16 @@ export async function POST(request: NextRequest) {
     .from('requests') as any)
     .insert({
       company_id: companyId,
-      title: body.title.trim(),
-      description: body.description || null,
+      title: body.title,
+      description: body.description ?? null,
       status: 'queue', // Always starts in queue
-      priority: body.priority || 'normal',
-      assets_link: body.assets_link || null,
-      video_brief: body.video_brief || null,
-      due_date: body.due_date || null,
+      priority: body.priority ?? 'normal',
+      assets_link: body.assets_link ?? null,
+      video_brief: body.video_brief ?? null,
     })
     .select(`
       *,
-      company:companies(id, name, status, plan_tier),
-      assignee:profiles!requests_assigned_to_fkey(id, email, full_name, avatar_url)
+      company:companies(id, name, status, plan_tier)
     `)
     .single() as { data: Record<string, unknown> | null; error: unknown };
 

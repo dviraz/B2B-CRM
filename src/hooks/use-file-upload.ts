@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import type { FileUpload } from '@/types';
 
 interface UseFileUploadOptions {
@@ -8,6 +9,20 @@ interface UseFileUploadOptions {
   onSuccess?: (file: FileUpload) => void;
   onError?: (error: string) => void;
 }
+
+// Max file size: 50MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+// Allowed MIME types
+const ALLOWED_TYPES = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+  'application/pdf',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/zip', 'text/plain', 'text/csv',
+  'video/mp4', 'video/webm', 'video/quicktime',
+  'audio/mpeg', 'audio/wav',
+];
 
 export function useFileUpload({ requestId, onSuccess, onError }: UseFileUploadOptions) {
   const [isUploading, setIsUploading] = useState(false);
@@ -20,22 +35,60 @@ export function useFileUpload({ requestId, onSuccess, onError }: UseFileUploadOp
       setIsUploading(true);
       setUploadProgress(0);
 
+      const supabase = createClient();
       const totalFiles = files.length;
       let completedFiles = 0;
 
       for (const file of files) {
         try {
-          const formData = new FormData();
-          formData.append('file', file);
+          // Validate file size
+          if (file.size > MAX_FILE_SIZE) {
+            throw new Error(`File "${file.name}" exceeds 50MB limit`);
+          }
 
+          // Validate file type
+          if (!ALLOWED_TYPES.includes(file.type)) {
+            throw new Error(`File type "${file.type}" is not allowed`);
+          }
+
+          // Generate unique storage path
+          const timestamp = Date.now();
+          const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const storagePath = `${requestId}/${timestamp}-${sanitizedName}`;
+
+          // Upload to Supabase Storage
+          const { error: uploadError } = await supabase.storage
+            .from('request-files')
+            .upload(storagePath, file, {
+              cacheControl: '3600',
+              upsert: false,
+            });
+
+          if (uploadError) {
+            throw new Error(uploadError.message);
+          }
+
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from('request-files')
+            .getPublicUrl(storagePath);
+
+          // Register file in database via API
           const response = await fetch(`/api/requests/${requestId}/files`, {
             method: 'POST',
-            body: formData,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              file_name: file.name,
+              file_size: file.size,
+              mime_type: file.type,
+              storage_path: storagePath,
+              storage_url: urlData.publicUrl,
+            }),
           });
 
           if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.error || 'Upload failed');
+            throw new Error(error.error || 'Failed to register file');
           }
 
           const uploadedFile = await response.json();

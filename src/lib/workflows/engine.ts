@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { sendStatusChangeEmail } from '@/lib/email';
 import type { WorkflowRule, TriggerType, ActionType, Request } from '@/types';
 
 interface TriggerConditions {
@@ -217,9 +218,7 @@ export class WorkflowEngine {
         break;
 
       case 'send_email':
-        // Email sending would be implemented here
-        // For now, create a notification instead
-        await this.sendNotification(context.request, message);
+        await this.sendEmailNotification(context.request, message, context);
         break;
     }
   }
@@ -293,6 +292,81 @@ export class WorkflowEngine {
     await (this.supabase.from('requests') as ReturnType<typeof this.supabase.from>)
       .update({ assigned_to: userId })
       .eq('id', request.id);
+  }
+
+  /**
+   * Send email notification to relevant users
+   */
+  private async sendEmailNotification(
+    request: Request,
+    _message: string,
+    context: WorkflowContext
+  ): Promise<void> {
+    // Get users who should receive email notifications
+    const recipients: Array<{ email: string; name: string | null }> = [];
+
+    // Get assignee if exists
+    if (request.assigned_to) {
+      const { data: assignee } = await (this.supabase
+        .from('profiles') as ReturnType<typeof this.supabase.from>)
+        .select('email, full_name')
+        .eq('id', request.assigned_to)
+        .single() as { data: { email: string; full_name: string | null } | null };
+
+      if (assignee) {
+        // Check notification preferences
+        const { data: prefs } = await (this.supabase
+          .from('notification_preferences') as ReturnType<typeof this.supabase.from>)
+          .select('email_on_status_change')
+          .eq('user_id', request.assigned_to)
+          .single() as { data: { email_on_status_change: boolean } | null };
+
+        if (!prefs || prefs.email_on_status_change !== false) {
+          recipients.push({ email: assignee.email, name: assignee.full_name });
+        }
+      }
+    }
+
+    // Get company users who should be notified
+    const { data: companyUsers } = await (this.supabase
+      .from('profiles') as ReturnType<typeof this.supabase.from>)
+      .select('id, email, full_name')
+      .eq('company_id', request.company_id) as { data: Array<{ id: string; email: string; full_name: string | null }> | null };
+
+    if (companyUsers) {
+      for (const user of companyUsers) {
+        // Skip if already added
+        if (recipients.some(r => r.email === user.email)) continue;
+
+        // Check notification preferences
+        const { data: prefs } = await (this.supabase
+          .from('notification_preferences') as ReturnType<typeof this.supabase.from>)
+          .select('email_on_status_change')
+          .eq('user_id', user.id)
+          .single() as { data: { email_on_status_change: boolean } | null };
+
+        if (!prefs || prefs.email_on_status_change !== false) {
+          recipients.push({ email: user.email, name: user.full_name });
+        }
+      }
+    }
+
+    // Send emails
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const requestUrl = `${appUrl}/dashboard?request=${request.id}`;
+
+    for (const recipient of recipients) {
+      if (context.previousStatus && context.newStatus) {
+        await sendStatusChangeEmail(
+          recipient.email,
+          request.title,
+          context.previousStatus,
+          context.newStatus,
+          requestUrl,
+          recipient.name || undefined
+        );
+      }
+    }
   }
 
   /**

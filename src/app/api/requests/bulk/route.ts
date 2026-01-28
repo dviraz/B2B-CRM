@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
+import { validateBody, bulkRequestSchema } from '@/lib/validations';
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting for mutations: 60 requests per minute
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.mutation);
+  if (rateLimitResult) return rateLimitResult;
+
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -23,30 +29,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body = await request.json();
+  // Validate request body
+  const { data: body, error: validationError } = await validateBody(request, bulkRequestSchema);
+  if (validationError || !body) {
+    return NextResponse.json({ error: validationError || 'Invalid request body' }, { status: 400 });
+  }
+
   const { request_ids, action, value } = body;
-
-  if (!request_ids || !Array.isArray(request_ids) || request_ids.length === 0) {
-    return NextResponse.json(
-      { error: 'request_ids array is required' },
-      { status: 400 }
-    );
-  }
-
-  if (!action) {
-    return NextResponse.json(
-      { error: 'action is required' },
-      { status: 400 }
-    );
-  }
-
-  const validActions = ['update_status', 'update_priority', 'assign', 'delete'];
-  if (!validActions.includes(action)) {
-    return NextResponse.json(
-      { error: `Invalid action. Valid actions: ${validActions.join(', ')}` },
-      { status: 400 }
-    );
-  }
 
   let result: { success: boolean; updated?: number; deleted?: number; error?: string };
 

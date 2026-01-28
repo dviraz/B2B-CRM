@@ -90,9 +90,11 @@ export function CompanyContacts({ companyId, isAdmin = false }: CompanyContactsP
       if (response.ok) {
         const data = await response.json();
         setContacts(data);
+      } else {
+        toast.error('Failed to load contacts');
       }
-    } catch (error) {
-      console.error('Error fetching contacts:', error);
+    } catch {
+      toast.error('Error fetching contacts');
     } finally {
       setLoading(false);
     }
@@ -481,7 +483,7 @@ export function CompanyContacts({ companyId, isAdmin = false }: CompanyContactsP
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Contact</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteContact?.name}"? This action cannot be undone.
+              Are you sure you want to delete &quot;{deleteContact?.name}&quot;? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

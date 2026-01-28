@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 // GET /api/analytics/mrr - Get total MRR
 export async function GET(request: NextRequest) {
+  // Apply rate limiting (analytics preset: 10/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.analytics);
+  if (rateLimitResult) return rateLimitResult;
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();

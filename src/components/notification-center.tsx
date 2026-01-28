@@ -134,8 +134,9 @@ export function NotificationCenter({ className }: NotificationCenterProps) {
         variant="ghost"
         size="icon"
         className={cn('relative', className)}
+        aria-label="Notifications"
       >
-        <Bell className="h-5 w-5" />
+        <Bell className="h-5 w-5" aria-hidden="true" />
       </Button>
     );
   }
@@ -147,10 +148,16 @@ export function NotificationCenter({ className }: NotificationCenterProps) {
           variant="ghost"
           size="icon"
           className={cn('relative', className)}
+          aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+          aria-expanded={isOpen}
+          aria-haspopup="true"
         >
-          <Bell className="h-5 w-5" />
+          <Bell className="h-5 w-5" aria-hidden="true" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center">
+            <span
+              className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center"
+              aria-hidden="true"
+            >
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}

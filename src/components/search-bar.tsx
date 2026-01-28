@@ -60,13 +60,15 @@ export function SearchBar({
   };
 
   return (
-    <div className={cn('relative', className)}>
-      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+    <div className={cn('relative', className)} role="search">
+      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
       <Input
         value={localValue}
         onChange={handleChange}
         placeholder={placeholder}
         className="pl-10 pr-10"
+        aria-label={placeholder}
+        type="search"
       />
       {localValue && (
         <Button
@@ -74,8 +76,9 @@ export function SearchBar({
           size="sm"
           className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
           onClick={handleClear}
+          aria-label="Clear search"
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       )}
     </div>

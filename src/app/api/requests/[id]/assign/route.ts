@@ -1,11 +1,16 @@
 import { createClient } from '@/lib/supabase/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 // POST /api/requests/[id]/assign - Assign or unassign a request
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Apply rate limiting (mutation preset: 60/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.mutation);
+  if (rateLimitResult) return rateLimitResult;
+
   const supabase = await createClient();
   const { id: requestId } = await params;
 

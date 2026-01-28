@@ -113,9 +113,11 @@ export function CompanyServices({ companyId, isAdmin = false }: CompanyServicesP
       if (response.ok) {
         const data = await response.json();
         setServices(data);
+      } else {
+        toast.error('Failed to load services');
       }
-    } catch (error) {
-      console.error('Error fetching services:', error);
+    } catch {
+      toast.error('Error fetching services');
     } finally {
       setLoading(false);
     }
@@ -491,7 +493,7 @@ export function CompanyServices({ companyId, isAdmin = false }: CompanyServicesP
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Service</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteService?.service_name}"? This action cannot be undone.
+              Are you sure you want to delete &quot;{deleteService?.service_name}&quot;? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
 import { WooCommerceClient } from '@/lib/woocommerce/client';
 
 type Params = Promise<{ id: string }>;
@@ -8,6 +9,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Params }
 ) {
+  // Apply rate limiting (strict preset: 5/min - sensitive billing operation)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.strict);
+  if (rateLimitResult) return rateLimitResult;
+
   const { id } = await params;
   const supabase = await createClient();
 

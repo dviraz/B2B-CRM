@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { ClientDashboard } from '@/components/client-dashboard';
 import { AdminDashboard } from '@/components/admin-dashboard';
+import { OnboardingWizard } from '@/components/onboarding-wizard';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -50,11 +51,22 @@ export default async function DashboardPage() {
     .eq('company_id', profile.company.id)
     .eq('status', 'active') as { count: number | null };
 
+  // Check if client needs onboarding
+  const needsOnboarding = !profile.company.onboarding_completed_at;
+
   return (
-    <ClientDashboard
-      company={profile.company}
-      requests={requests || []}
-      activeCount={activeCount || 0}
-    />
+    <>
+      {needsOnboarding && (
+        <OnboardingWizard
+          company={profile.company}
+          userName={profile.full_name || user.email || 'there'}
+        />
+      )}
+      <ClientDashboard
+        company={profile.company}
+        requests={requests || []}
+        activeCount={activeCount || 0}
+      />
+    </>
   );
 }

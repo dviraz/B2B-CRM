@@ -59,8 +59,8 @@ export function BulkActionToolbar({
 
   if (!isSelectionMode) {
     return (
-      <Button variant="outline" size="sm" onClick={onToggleSelectionMode}>
-        <CheckSquare className="h-4 w-4 mr-2" />
+      <Button variant="outline" size="sm" onClick={onToggleSelectionMode} aria-label="Enable selection mode">
+        <CheckSquare className="h-4 w-4 mr-2" aria-hidden="true" />
         Select
       </Button>
     );
@@ -68,13 +68,13 @@ export function BulkActionToolbar({
 
   return (
     <>
-      <div className="flex items-center gap-2 bg-muted p-2 rounded-lg">
-        <Button variant="ghost" size="sm" onClick={onToggleSelectionMode}>
-          <XSquare className="h-4 w-4 mr-2" />
+      <div className="flex items-center gap-2 bg-muted p-2 rounded-lg" role="toolbar" aria-label="Bulk actions">
+        <Button variant="ghost" size="sm" onClick={onToggleSelectionMode} aria-label="Exit selection mode">
+          <XSquare className="h-4 w-4 mr-2" aria-hidden="true" />
           Cancel
         </Button>
 
-        <div className="text-sm font-medium px-2">
+        <div className="text-sm font-medium px-2" aria-live="polite">
           {selectedCount} selected
         </div>
 

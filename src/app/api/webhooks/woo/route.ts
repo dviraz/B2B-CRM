@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { verifyWebhookSignature, getPlanFromProducts } from '@/lib/woocommerce/client';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
+import { sendPasswordResetEmail, sendWelcomeEmail } from '@/lib/email';
 import type { WooWebhookPayload, CompanyStatus, ServiceStatus, ServiceType, BillingCycle } from '@/types';
 
 // Map WooCommerce status to our company status
@@ -59,6 +61,10 @@ interface ExtendedWooPayload extends WooWebhookPayload {
 }
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting: 100 requests per minute per IP
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.webhook);
+  if (rateLimitResult) return rateLimitResult;
+
   try {
     // Get raw body for signature verification
     const rawBody = await request.text();
@@ -85,14 +91,32 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get('x-wc-webhook-signature');
     const webhookSecret = process.env.WOO_WEBHOOK_SECRET;
 
-    if (webhookSecret && signature) {
-      const isValid = verifyWebhookSignature(rawBody, signature, webhookSecret);
-      if (!isValid) {
-        return NextResponse.json(
-          { error: 'Invalid webhook signature' },
-          { status: 401 }
-        );
-      }
+    // REQUIRED: Webhook secret must be configured
+    if (!webhookSecret) {
+      console.error('CRITICAL: WOO_WEBHOOK_SECRET not configured');
+      return NextResponse.json(
+        { error: 'Webhook security not configured' },
+        { status: 503 }
+      );
+    }
+
+    // REQUIRED: Signature must be present in webhook requests
+    if (!signature) {
+      console.error('Webhook request missing signature header');
+      return NextResponse.json(
+        { error: 'Missing webhook signature' },
+        { status: 401 }
+      );
+    }
+
+    // Verify the signature
+    const isValid = verifyWebhookSignature(rawBody, signature, webhookSecret);
+    if (!isValid) {
+      console.error('Invalid webhook signature detected');
+      return NextResponse.json(
+        { error: 'Invalid webhook signature' },
+        { status: 401 }
+      );
     }
 
     // Validate required fields for actual events
@@ -140,39 +164,52 @@ export async function POST(request: NextRequest) {
       const serviceStatus = mapWooToServiceStatus(payload.status);
       const subscriptionId = String(payload.id);
 
-      // Update existing services linked to this subscription
-      const { error: serviceUpdateError } = await (supabase
-        .from('client_services') as any)
-        .update({ status: serviceStatus })
+      // FIX: Fetch all existing services in ONE query to avoid N+1
+      const { data: existingServices } = await supabase
+        .from('client_services')
+        .select('id, woo_product_id, woo_subscription_id')
         .eq('company_id', existingCompany.id)
         .eq('woo_subscription_id', subscriptionId);
 
-      if (serviceUpdateError) {
-        console.error('Error updating services:', serviceUpdateError);
+      // Create lookup map for O(1) access
+      const serviceMap = new Map<string, string>();
+      if (existingServices) {
+        for (const service of existingServices as Array<{ id: string; woo_product_id: string | null }>) {
+          if (service.woo_product_id) {
+            serviceMap.set(service.woo_product_id, service.id);
+          }
+        }
       }
 
-      // Check if we need to create services for new line items
+      // Update all existing services status
+      if (existingServices && existingServices.length > 0) {
+        const { error: serviceUpdateError } = await (supabase
+          .from('client_services') as any)
+          .update({ status: serviceStatus })
+          .eq('company_id', existingCompany.id)
+          .eq('woo_subscription_id', subscriptionId);
+
+        if (serviceUpdateError) {
+          console.error('Error updating services:', serviceUpdateError);
+        }
+      }
+
+      // Batch insert new services
+      const servicesToInsert: Array<Record<string, unknown>> = [];
+
       for (const item of payload.line_items || []) {
         const productId = String(item.product_id);
 
-        // Check if service already exists for this product
-        const { data: existingService } = await supabase
-          .from('client_services')
-          .select('id')
-          .eq('company_id', existingCompany.id)
-          .eq('woo_product_id', productId)
-          .eq('woo_subscription_id', subscriptionId)
-          .single();
-
-        if (!existingService) {
-          // Create new service for this product
+        // Check if service exists using in-memory map
+        if (!serviceMap.has(productId)) {
+          // Prepare new service for batch insert
           const billingCycle = mapBillingCycle(extendedPayload.billing_period);
           const price = extendedPayload.total ? parseFloat(extendedPayload.total) : null;
           const renewalDate = extendedPayload.next_payment_date
             ? new Date(extendedPayload.next_payment_date).toISOString().split('T')[0]
             : null;
 
-          await (supabase.from('client_services') as any).insert({
+          servicesToInsert.push({
             company_id: existingCompany.id,
             service_name: item.name,
             service_type: 'subscription' as ServiceType,
@@ -185,6 +222,11 @@ export async function POST(request: NextRequest) {
             woo_subscription_id: subscriptionId,
           });
         }
+      }
+
+      // Batch insert all new services at once
+      if (servicesToInsert.length > 0) {
+        await (supabase.from('client_services') as any).insert(servicesToInsert);
       }
 
       return NextResponse.json({
@@ -261,8 +303,8 @@ export async function POST(request: NextRequest) {
       console.error('Error updating profile:', profileError);
     }
 
-    // Send password reset email for initial setup
-    const { error: resetError } = await supabase.auth.admin.generateLink({
+    // Generate password reset link for initial setup
+    const { data: linkData, error: resetError } = await supabase.auth.admin.generateLink({
       type: 'recovery',
       email,
       options: {
@@ -271,13 +313,39 @@ export async function POST(request: NextRequest) {
     });
 
     if (resetError) {
-      console.error('Error sending password reset:', resetError);
+      console.error('Error generating password reset link:', resetError);
+    }
+
+    // Send password reset email via Brevo
+    const userName = `${payload.billing?.first_name || ''} ${payload.billing?.last_name || ''}`.trim();
+    if (linkData?.properties?.action_link) {
+      const emailResult = await sendPasswordResetEmail(
+        email,
+        linkData.properties.action_link,
+        userName || undefined
+      );
+      if (!emailResult.success) {
+        console.error('Error sending password reset email:', emailResult.error);
+      }
+    }
+
+    // Send welcome email
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const welcomeResult = await sendWelcomeEmail(
+      email,
+      companyName,
+      `${appUrl}/login`,
+      userName || undefined
+    );
+    if (!welcomeResult.success) {
+      console.error('Error sending welcome email:', welcomeResult.error);
     }
 
     return NextResponse.json({
       success: true,
       action: 'created',
       companyId: newCompany.id,
+      emailSent: !!linkData?.properties?.action_link,
     });
 
   } catch (error) {

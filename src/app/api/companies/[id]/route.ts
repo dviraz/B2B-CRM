@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
 import type { IndustryType, BusinessType, RevenueRange } from '@/types/database';
 
 type Params = Promise<{ id: string }>;
@@ -19,6 +20,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Params }
 ) {
+  // Apply rate limiting (read preset: 120/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.read);
+  if (rateLimitResult) return rateLimitResult;
+
   const { id } = await params;
   const supabase = await createClient();
 
@@ -60,6 +65,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Params }
 ) {
+  // Apply rate limiting (mutation preset: 60/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.mutation);
+  if (rateLimitResult) return rateLimitResult;
+
   const { id } = await params;
   const supabase = await createClient();
 

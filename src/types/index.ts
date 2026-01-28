@@ -49,3 +49,29 @@ export interface DragEndEvent {
 export interface CompanyWithStats extends Company {
   active_request_count: number;
 }
+
+// File upload types
+export type FileType = 'image' | 'video' | 'document' | 'archive' | 'other';
+
+export interface FileUploader {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+}
+
+export interface FileUpload {
+  id: string;
+  request_id: string;
+  file_name: string;
+  file_size: number;
+  file_type: FileType;
+  mime_type: string | null;
+  storage_path: string;
+  storage_url: string;
+  thumbnail_url: string | null;
+  uploaded_by: string;
+  created_at: string;
+  // Populated from join
+  uploader?: FileUploader;
+}

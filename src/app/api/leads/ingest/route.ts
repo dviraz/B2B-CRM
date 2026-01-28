@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     // Validate request body
     const { data, error } = await validateBody(request, leadIngestSchema);
-    if (error) {
+    if (error || !data) {
       return NextResponse.json(
         { error: 'Invalid lead data', details: error },
         { status: 400 }
@@ -67,11 +67,11 @@ export async function POST(request: NextRequest) {
       .from('contacts')
       .select('id, company_id, company:companies(id, name, notes)')
       .eq('email', email)
-      .single();
+      .single() as { data: { id: string; company_id: string; company: { id: string; name: string; notes: string | null } | null } | null };
 
     if (existingContact?.company_id) {
       // Duplicate: Create a follow-up request for existing company
-      const existingCompany = existingContact.company as { id: string; name: string; notes: string | null } | null;
+      const existingCompany = existingContact.company;
       const companyId = existingContact.company_id;
 
       // Create follow-up request
@@ -83,9 +83,9 @@ export async function POST(request: NextRequest) {
           description: `**New inquiry from existing contact**\n\n**Service Interest:** ${serviceTitle}\n**Message:**\n${message}\n\n---\n*Source: ${source}*`,
           status: 'queue',
           priority: 'normal',
-        })
+        } as never)
         .select('id')
-        .single();
+        .single() as { data: { id: string } | null; error: unknown };
 
       if (requestError) {
         console.error('Error creating follow-up request:', requestError);
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
 
       await supabase
         .from('companies')
-        .update({ notes: existingNotes + newNote })
+        .update({ notes: existingNotes + newNote } as never)
         .eq('id', companyId);
 
       console.log('Follow-up lead created:', {
@@ -131,9 +131,9 @@ export async function POST(request: NextRequest) {
         plan_tier: 'standard',
         max_active_limit: 1,
         notes: `**Lead Source:** ${source}\n**Service Interest:** ${serviceTitle}\n**Initial Message:**\n${message}`,
-      })
+      } as never)
       .select('id')
-      .single();
+      .single() as { data: { id: string } | null; error: unknown };
 
     if (companyError || !newCompany) {
       console.error('Error creating company:', companyError);
@@ -154,9 +154,9 @@ export async function POST(request: NextRequest) {
         is_primary: true,
         is_billing_contact: true,
         is_active: true,
-      })
+      } as never)
       .select('id')
-      .single();
+      .single() as { data: { id: string } | null; error: unknown };
 
     if (contactError || !newContact) {
       console.error('Error creating contact:', contactError);
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
     // 3. Update company with primary_contact_id
     await supabase
       .from('companies')
-      .update({ primary_contact_id: newContact.id })
+      .update({ primary_contact_id: newContact.id } as never)
       .eq('id', newCompany.id);
 
     // 4. Create initial request
@@ -183,9 +183,9 @@ export async function POST(request: NextRequest) {
         description: `**Contact:** ${name}\n**Email:** ${email}\n**Phone:** ${phone || 'Not provided'}\n**Company:** ${company}\n\n**Service Interest:** ${serviceTitle}\n**Message:**\n${message}\n\n---\n*Source: ${source}*`,
         status: 'queue',
         priority: 'normal',
-      })
+      } as never)
       .select('id')
-      .single();
+      .single() as { data: { id: string } | null; error: unknown };
 
     if (requestError) {
       console.error('Error creating request:', requestError);

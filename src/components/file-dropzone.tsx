@@ -54,6 +54,8 @@ export function FileDropzone({
     disabled: disabled || isUploading,
   });
 
+  const dropzoneLabel = `File upload dropzone. Maximum ${maxFiles} files, up to ${Math.round(maxSize / 1024 / 1024)}MB each`;
+
   return (
     <div
       {...getRootProps()}
@@ -65,9 +67,13 @@ export function FileDropzone({
         (disabled || isUploading) && 'opacity-50 cursor-not-allowed',
         className
       )}
+      role="button"
+      aria-label={dropzoneLabel}
+      aria-disabled={disabled || isUploading}
+      tabIndex={disabled || isUploading ? -1 : 0}
     >
-      <input {...getInputProps()} />
-      <div className="flex flex-col items-center justify-center text-center">
+      <input {...getInputProps()} aria-label="File input" />
+      <div className="flex flex-col items-center justify-center text-center" aria-hidden="true">
         {isUploading ? (
           <>
             <Loader2 className="h-8 w-8 text-muted-foreground animate-spin mb-2" />

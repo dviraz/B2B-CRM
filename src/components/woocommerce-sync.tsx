@@ -55,9 +55,11 @@ export function WooCommerceSync() {
       if (response.ok) {
         const data = await response.json();
         setSyncInfo(data);
+      } else {
+        toast.error('Failed to load sync information');
       }
-    } catch (error) {
-      console.error('Error fetching sync info:', error);
+    } catch {
+      toast.error('Error fetching sync info');
     } finally {
       setLoading(false);
     }

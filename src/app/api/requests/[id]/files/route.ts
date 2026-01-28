@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
+import { validateBody, createFileSchema } from '@/lib/validations';
 
 type Params = Promise<{ id: string }>;
 
@@ -7,6 +9,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Params }
 ) {
+  // Apply rate limiting (read preset: 120/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.read);
+  if (rateLimitResult) return rateLimitResult;
+
   const { id: requestId } = await params;
   const supabase = await createClient();
 
@@ -59,6 +65,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Params }
 ) {
+  // Apply rate limiting (mutation preset: 60/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.mutation);
+  if (rateLimitResult) return rateLimitResult;
+
   const { id: requestId } = await params;
   const supabase = await createClient();
 
@@ -98,13 +108,10 @@ export async function POST(
     );
   }
 
-  const body = await request.json();
-
-  if (!body.file_name || !body.file_size || !body.storage_path || !body.storage_url) {
-    return NextResponse.json(
-      { error: 'file_name, file_size, storage_path, and storage_url are required' },
-      { status: 400 }
-    );
+  // Validate request body
+  const { data: body, error: validationError } = await validateBody(request, createFileSchema);
+  if (validationError || !body) {
+    return NextResponse.json({ error: validationError || 'Invalid request body' }, { status: 400 });
   }
 
   // Determine file type
@@ -149,6 +156,10 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Params }
 ) {
+  // Apply rate limiting (mutation preset: 60/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.mutation);
+  if (rateLimitResult) return rateLimitResult;
+
   const { id: requestId } = await params;
   const supabase = await createClient();
 

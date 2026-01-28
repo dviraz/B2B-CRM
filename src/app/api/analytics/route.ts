@@ -1,8 +1,13 @@
 import { createClient } from '@/lib/supabase/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
+import { withCacheHeaders, CachePresets } from '@/lib/cache';
 
 // GET /api/analytics - Get analytics data
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Apply rate limiting (analytics preset: 10/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.analytics);
+  if (rateLimitResult) return rateLimitResult;
   const supabase = await createClient();
 
   // Get current user
@@ -47,14 +52,14 @@ export async function GET(request: Request) {
     }> | null };
 
   if (!requests) {
-    return NextResponse.json({
+    return withCacheHeaders({
       overview: { total: 0, completed: 0, active: 0, avgCompletionTime: 0 },
       statusDistribution: [],
       priorityDistribution: [],
       requestVolume: [],
       slaCompliance: { onTrack: 0, atRisk: 0, breached: 0 },
       teamWorkload: [],
-    });
+    }, CachePresets.analytics);
   }
 
   // Get team members first (needed for workload calculation)
@@ -171,7 +176,8 @@ export async function GET(request: Request) {
     };
   });
 
-  return NextResponse.json({
+  // Cache analytics data for 5 minutes with SWR (computationally expensive)
+  return withCacheHeaders({
     overview: {
       total,
       completed,
@@ -183,5 +189,5 @@ export async function GET(request: Request) {
     requestVolume,
     slaCompliance,
     teamWorkload,
-  });
+  }, CachePresets.analytics);
 }

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
+import { validateBody, moveRequestSchema } from '@/lib/validations';
 import type { RequestStatus } from '@/types';
 
 type Params = Promise<{ id: string }>;
@@ -16,6 +18,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Params }
 ) {
+  // Apply rate limiting (mutation preset: 60/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.mutation);
+  if (rateLimitResult) return rateLimitResult;
+
   const { id } = await params;
   const supabase = await createClient();
 
@@ -24,15 +30,13 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await request.json();
-  const newStatus = body.status as RequestStatus;
-
-  if (!newStatus || !['queue', 'active', 'review', 'done'].includes(newStatus)) {
-    return NextResponse.json(
-      { error: 'Invalid status' },
-      { status: 400 }
-    );
+  // Validate request body
+  const { data: body, error: validationError } = await validateBody(request, moveRequestSchema);
+  if (validationError || !body) {
+    return NextResponse.json({ error: validationError || 'Invalid request body' }, { status: 400 });
   }
+
+  const newStatus = body.status as RequestStatus;
 
   // Get user profile
   const { data: profile } = await supabase

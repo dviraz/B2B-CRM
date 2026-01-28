@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { applyRateLimit, RateLimitPresets } from '@/lib/rate-limit';
+import { withCacheHeaders, CachePresets } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
+  // Apply rate limiting (read preset: 120/min)
+  const rateLimitResult = await applyRateLimit(request, RateLimitPresets.read);
+  if (rateLimitResult) return rateLimitResult;
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -69,5 +74,6 @@ export async function GET(request: NextRequest) {
     active_request_count: activeCountMap.get(company.id) || 0,
   }));
 
-  return NextResponse.json(companiesWithCounts);
+  // Cache list data for 30 seconds with SWR
+  return withCacheHeaders(companiesWithCounts, CachePresets.listData);
 }

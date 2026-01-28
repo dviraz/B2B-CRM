@@ -211,3 +211,18 @@ export type CreateWorkflowInput = z.infer<typeof createWorkflowSchema>;
 export type UpdateWorkflowInput = z.infer<typeof updateWorkflowSchema>;
 export type CreateAssignmentInput = z.infer<typeof createAssignmentSchema>;
 export type CreateFileInput = z.infer<typeof createFileSchema>;
+
+// Lead ingestion schema (from marketing site)
+export const leadIngestSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').max(255),
+  email: z.string().email('Invalid email').max(255),
+  phone: z.string().max(50).optional().or(z.literal('')),
+  company: z.string().min(2, 'Company name must be at least 2 characters').max(255),
+  serviceType: z.enum(['seo', 'website', 'ads', 'content', 'automation', 'custom'], {
+    message: 'Invalid service type',
+  }),
+  message: z.string().min(10, 'Message must be at least 10 characters').max(5000),
+  source: z.string().max(100).optional().default('adhd-master'),
+});
+
+export type LeadIngestInput = z.infer<typeof leadIngestSchema>;
